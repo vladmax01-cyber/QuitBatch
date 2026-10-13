@@ -171,7 +171,10 @@ final class AppModel: ObservableObject {
     }
 
     func clearAppsToClose(for profileID: UUID) {
-        updateProfile(profileID) { $0.close.removeAll() }
+        updateProfile(profileID) {
+            $0.close.removeAll()
+            $0.includeNewApps = false
+        }
     }
 
     func addApplication(to profileID: UUID, decision: ProfileDecision) {
@@ -330,7 +333,7 @@ final class AppModel: ObservableObject {
     }
 
     func setAccentDarkness(_ darkness: Double, persist: Bool) {
-        state.preferences.accentDarkness = min(0.35, max(0, darkness))
+        state.preferences.accentDarkness = min(1, max(0, darkness))
         if persist { save() }
     }
 

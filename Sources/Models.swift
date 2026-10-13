@@ -53,6 +53,8 @@ struct Shortcut: Codable, Equatable {
 }
 
 struct Preferences: Codable, Equatable {
+    static let defaultAccentDarkness = 0.0
+
     var launchAtLogin = false
     var confirmBeforeQuitting = false
     var appearance = "system"
@@ -62,7 +64,7 @@ struct Preferences: Codable, Equatable {
     var showProfileStrip = true
     var useCustomAccent = false
     var customAccentHue = 0.59
-    var accentDarkness = 0.08
+    var accentDarkness = Preferences.defaultAccentDarkness
     var windowTransparency = 0.08
     var windowWidth = 440.0
     var windowHeight = 626.0
@@ -88,7 +90,7 @@ struct Preferences: Codable, Equatable {
         showProfileStrip = try values.decodeIfPresent(Bool.self, forKey: .showProfileStrip) ?? true
         useCustomAccent = try values.decodeIfPresent(Bool.self, forKey: .useCustomAccent) ?? false
         customAccentHue = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .customAccentHue) ?? 0.59))
-        accentDarkness = min(0.35, max(0, try values.decodeIfPresent(Double.self, forKey: .accentDarkness) ?? 0.08))
+        accentDarkness = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .accentDarkness) ?? Preferences.defaultAccentDarkness))
         windowTransparency = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .windowTransparency) ?? 0.08))
         windowWidth = min(720, max(420, try values.decodeIfPresent(Double.self, forKey: .windowWidth) ?? 440))
         windowHeight = min(900, max(520, try values.decodeIfPresent(Double.self, forKey: .windowHeight) ?? 626))

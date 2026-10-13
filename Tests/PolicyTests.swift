@@ -14,11 +14,11 @@ struct PolicyTests {
         precondition(migrated.useGlass && migrated.windowTransparency == 0.08)
         precondition(migrated.showProfileStrip)
         precondition(!migrated.useCustomAccent && migrated.customAccentHue == 0.59)
-        precondition(migrated.accentDarkness == 0.08)
+        precondition(migrated.accentDarkness == 0)
         let customAccent = try JSONDecoder().decode(Preferences.self,
-            from: Data(#"{"useCustomAccent":true,"customAccentHue":1.5,"accentDarkness":0.8}"#.utf8))
+            from: Data(#"{"useCustomAccent":true,"customAccentHue":1.5,"accentDarkness":1.8}"#.utf8))
         precondition(customAccent.useCustomAccent && customAccent.customAccentHue == 1 &&
-                     customAccent.accentDarkness == 0.35)
+                     customAccent.accentDarkness == 1)
         precondition(migrated.windowWidth == 440 && migrated.windowHeight == 626)
         precondition(migrated.menuBarSymbol == "appcloser")
         precondition(Set(SymbolCatalog.profileChoices.map(\.id)).count == SymbolCatalog.profileChoices.count)
@@ -62,6 +62,9 @@ struct PolicyTests {
         model.setAccentDarkness(0.2, persist: true)
         let savedDarkness = try store.load().preferences.accentDarkness
         precondition(savedDarkness == 0.2)
+        model.setAccentDarkness(1, persist: true)
+        let maximumDarkness = try store.load().preferences.accentDarkness
+        precondition(maximumDarkness == 1)
         model.createProfile()
         guard let created = model.selectedProfileID else { fatalError("Profile was not selected") }
         model.updateProfile(created) { $0.name = "Test Profile" }
@@ -84,8 +87,10 @@ struct PolicyTests {
         precondition(closedIDs.count == selectedProfile.close.count)
         precondition(closedIDs.isDisjoint(with: keptIDs))
         precondition(model.eligibleApps.allSatisfy { keptIDs.contains($0.reference.id) || closedIDs.contains($0.reference.id) })
+        model.updateProfile(examID) { $0.includeNewApps = true }
         model.clearAppsToClose(for: examID)
         precondition(model.state.profiles.first(where: { $0.id == examID })?.close.isEmpty == true)
+        precondition(model.state.profiles.first(where: { $0.id == examID })?.includeNewApps == false)
         model.selectAll()
         precondition(model.apps.filter(\.protected).allSatisfy { !model.selectedPIDs.contains($0.id) })
         model.deselectAll()

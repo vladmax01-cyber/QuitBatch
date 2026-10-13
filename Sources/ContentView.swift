@@ -9,19 +9,26 @@ private enum Palette {
     static func accent(_ preferences: Preferences) -> Color {
         return Color(nsColor: NSColor(name: nil) { appearance in
             let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            let base = preferences.useCustomAccent
-                ? NSColor(calibratedHue: preferences.customAccentHue,
-                          saturation: dark ? 0.42 : 0.58,
-                          brightness: dark ? 0.84 : 0.65, alpha: 1)
-                : NSColor.systemBlue
+            var base = NSColor(calibratedHue: preferences.customAccentHue,
+                               saturation: dark ? 0.75 : 0.8,
+                               brightness: dark ? 1 : 0.95, alpha: 1)
+            if !preferences.useCustomAccent {
+                appearance.performAsCurrentDrawingAppearance {
+                    base = NSColor.controlAccentColor.usingColorSpace(.deviceRGB) ?? NSColor.controlAccentColor
+                }
+            }
             let rgb = base.usingColorSpace(.deviceRGB) ?? base
             var hue: CGFloat = 0
             var saturation: CGFloat = 0
             var brightness: CGFloat = 0
             var alpha: CGFloat = 0
             rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-            return NSColor(calibratedHue: hue, saturation: saturation,
-                           brightness: brightness * (1 - preferences.accentDarkness), alpha: alpha)
+            let amount = CGFloat(preferences.accentDarkness)
+            let darkestBrightness = min(brightness, dark ? 0.65 : 0.3)
+            return NSColor(calibratedHue: hue,
+                           saturation: saturation,
+                           brightness: brightness + (darkestBrightness - brightness) * amount,
+                           alpha: alpha)
         })
     }
 
@@ -219,7 +226,7 @@ private struct OpenAppsView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Running applications").font(.headline)
-                    Text("\(visibleApps.count) shown · \(model.selectedCount) selected")
+                    Text("\(visibleApps.count) running (\(Set(visibleApps.map { $0.reference.id }).count) apps) · \(model.selectedCount) selected")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -413,8 +420,8 @@ private struct ProfilesView: View {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         profileIdentity(profile)
 
-                        profileAppSection("Close", entries: profile.close, id: profile.id, decision: .close)
-                        profileAppSection("Keep Open", entries: profile.keep, id: profile.id, decision: .keep)
+                        profileAppSection("Close", entries: profile.close, profile: profile, decision: .close)
+                        profileAppSection("Keep Open", entries: profile.keep, profile: profile, decision: .keep)
 
                         VStack(alignment: .leading, spacing: 8) {
                             profileToggle("Include newly detected apps", value: profile.includeNewApps, id: profile.id) { $0.includeNewApps = $1 }
@@ -474,6 +481,16 @@ private struct ProfilesView: View {
                     Text("\(profile.close.count) Close  ·  \(profile.keep.count) Keep Open")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    let runningToClose = model.apps.filter {
+                        AppPolicy.decision(for: $0.reference, protected: $0.protected, profile: profile) == .close
+                    }.count
+                    let runningKept = model.apps.filter {
+                        AppPolicy.decision(for: $0.reference, protected: $0.protected, profile: profile) == .keep
+                    }.count
+                    Text("\(runningToClose) running to close · \(runningKept) kept open · \(model.apps.filter(\.protected).count) protected")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
                 Spacer(minLength: 4)
                 Button(editingProfile ? "Done" : "Edit") { editingProfile.toggle() }
@@ -571,11 +588,9 @@ private struct ProfilesView: View {
                             model.updateProfile(profile.id) { $0.symbol = choice.id }
                             showingProfileSymbols = false
                         } label: {
-                            VStack(spacing: 4) {
-                                Image(systemName: choice.id).font(.system(size: 21))
-                                Text(choice.title).font(.caption2).lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 50)
+                            Image(systemName: choice.id)
+                                .font(.system(size: 25))
+                                .frame(maxWidth: .infinity, minHeight: 48)
                             .foregroundStyle(profile.symbol == choice.id ? Palette.color(profile.accent, preferences: model.state.preferences) : Color.primary)
                             .background(profile.symbol == choice.id ? Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13) : Color.primary.opacity(0.045),
                                         in: RoundedRectangle(cornerRadius: 8))
@@ -584,6 +599,7 @@ private struct ProfilesView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Choose \(choice.title) symbol")
                         .accessibilityAddTraits(profile.symbol == choice.id ? .isSelected : [])
+                        .help(choice.title)
                     }
                 }
             }
@@ -603,15 +619,25 @@ private struct ProfilesView: View {
         .controlSize(.small)
     }
 
-    private func profileAppSection(_ title: String, entries: [AppReference], id: UUID,
+    private func profileAppSection(_ title: String, entries: [AppReference], profile: AppProfile,
                                    decision: ProfileDecision) -> some View {
         let isExpanded = decision == .close ? $closeExpanded : $keepExpanded
+        let runningCounts = Dictionary(grouping: model.eligibleApps, by: { $0.reference.id }).mapValues(\.count)
+        let savedIDs = Set((profile.close + profile.keep).map(\.id))
+        var seenImplicitIDs = Set<String>()
+        let implicitApps = model.eligibleApps.filter {
+            !savedIDs.contains($0.reference.id) &&
+            AppPolicy.decision(for: $0.reference, protected: false, profile: profile) == decision &&
+            seenImplicitIDs.insert($0.reference.id).inserted
+        }
+        let runningTotal = entries.reduce(0) { $0 + (runningCounts[$1.id] ?? 0) }
+            + implicitApps.reduce(0) { $0 + (runningCounts[$1.reference.id] ?? 0) }
         return LazyVStack(alignment: .leading, spacing: 7) {
             HStack {
                 Button { isExpanded.wrappedValue.toggle() } label: {
                     HStack(spacing: 8) {
                         Text(title).font(.subheadline.weight(.semibold))
-                        Text("\(entries.count)")
+                        Text("\(entries.count) saved · \(runningTotal) running")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                         Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
@@ -628,11 +654,11 @@ private struct ProfilesView: View {
                 Menu {
                     if !model.eligibleApps.isEmpty {
                         ForEach(model.eligibleApps) { app in
-                            Button(app.name) { model.setApp(app.reference, decision: decision, profileID: id) }
+                        Button(app.name) { model.setApp(app.reference, decision: decision, profileID: profile.id) }
                         }
                         Divider()
                     }
-                    Button("Choose Application…") { model.addApplication(to: id, decision: decision) }
+                    Button("Choose Application…") { model.addApplication(to: profile.id, decision: decision) }
                 } label: { Label("Add App", systemImage: "plus").font(.system(size: 14)) }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
@@ -640,17 +666,17 @@ private struct ProfilesView: View {
             if isExpanded.wrappedValue {
                 if decision == .close {
                     HStack(spacing: 14) {
-                        Button("Select All") { model.selectAllAppsToClose(for: id) }
+                        Button("Select All") { model.selectAllAppsToClose(for: profile.id) }
                             .disabled(model.eligibleApps.isEmpty || model.busy)
                             .help("Add running apps except Keep Open and protected apps")
-                        Button("Deselect All") { model.clearAppsToClose(for: id) }
+                        Button("Deselect All") { model.clearAppsToClose(for: profile.id) }
                             .disabled(entries.isEmpty || model.busy)
                         Spacer()
                     }
                     .font(.caption)
                     .buttonStyle(.borderless)
                 }
-                if entries.isEmpty {
+                if entries.isEmpty && implicitApps.isEmpty {
                     Text("No apps added").font(.caption).foregroundStyle(.secondary)
                 } else {
                     ForEach(entries) { entry in
@@ -659,12 +685,33 @@ private struct ProfilesView: View {
                                 .resizable().frame(width: 24, height: 24)
                             Text(entry.name).font(.caption).lineLimit(1)
                             Spacer()
-                            Button { model.updateProfile(id) { profile in
+                            if let count = runningCounts[entry.id], count > 1 {
+                                Text("\(count) running")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button { model.updateProfile(profile.id) { profile in
                                 profile.close.removeAll { $0.id == entry.id }
                                 profile.keep.removeAll { $0.id == entry.id }
                             }} label: { Image(systemName: "minus.circle").font(.system(size: 16)) }
                                 .buttonStyle(.borderless)
                                 .help("Remove \(entry.name) from profile")
+                        }
+                    }
+                    ForEach(implicitApps) { app in
+                        HStack(spacing: 8) {
+                            Image(nsImage: app.icon)
+                                .resizable().frame(width: 24, height: 24)
+                            Text(app.name).font(.caption).lineLimit(1)
+                            Text("Auto").font(.caption2).foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                model.setApp(app.reference,
+                                             decision: decision == .close ? .keep : .close,
+                                             profileID: profile.id)
+                            } label: { Image(systemName: "arrow.left.arrow.right.circle").font(.system(size: 16)) }
+                            .buttonStyle(.borderless)
+                            .help(decision == .close ? "Keep \(app.name) open" : "Add \(app.name) to Close")
                         }
                     }
                 }
@@ -781,17 +828,17 @@ struct SettingsView: View {
                                 Button("Default") {
                                     model.updatePreferences {
                                         $0.useCustomAccent = false
-                                        $0.accentDarkness = 0.08
+                                        $0.accentDarkness = Preferences.defaultAccentDarkness
                                     }
                                 }
                                 .controlSize(.small)
                                 .disabled(!model.state.preferences.useCustomAccent &&
-                                          model.state.preferences.accentDarkness == 0.08)
+                                          model.state.preferences.accentDarkness == Preferences.defaultAccentDarkness)
                             }
                             AccentHueSlider(value: Binding(
                                 get: { model.state.preferences.customAccentHue },
                                 set: { model.setAccentHue($0, persist: false) }
-                            ), onCommit: { model.save() })
+                            ), color: Palette.accent(model.state.preferences), onCommit: { model.save() })
                         }
 
                         HStack(spacing: 10) {
@@ -800,7 +847,7 @@ struct SettingsView: View {
                             Slider(value: Binding(
                                 get: { model.state.preferences.accentDarkness },
                                 set: { model.setAccentDarkness($0, persist: false) }
-                            ), in: 0...0.35, onEditingChanged: { editing in
+                            ), in: 0...1, onEditingChanged: { editing in
                                 if !editing { model.save() }
                             })
                             .accessibilityLabel("Darken accent color")
@@ -894,15 +941,12 @@ struct SettingsView: View {
                         model.updatePreferences { $0.menuBarSymbol = choice.id }
                         showingSymbols = false
                     } label: {
-                        VStack(spacing: 5) {
-                            Image(nsImage: SymbolCatalog.menuBarImage(for: choice.id))
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 26, height: 26)
-                            Text(choice.title).font(.caption2).lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 54)
+                        Image(nsImage: SymbolCatalog.menuBarImage(for: choice.id))
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 30, height: 30)
+                            .frame(maxWidth: .infinity, minHeight: 50)
                         .foregroundStyle(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent(model.state.preferences) : Color.primary)
                         .background(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent(model.state.preferences).opacity(0.14) : Color.primary.opacity(0.05),
                                     in: RoundedRectangle(cornerRadius: 10))
@@ -910,6 +954,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Use \(choice.title) menu bar icon")
+                    .help(choice.title)
                 }
             }
         }
@@ -933,6 +978,7 @@ struct SettingsView: View {
 
 private struct AccentHueSlider: View {
     @Binding var value: Double
+    let color: Color
     let onCommit: () -> Void
 
     var body: some View {
@@ -950,7 +996,7 @@ private struct AccentHueSlider: View {
                 .clipShape(Capsule())
 
                 Circle()
-                    .fill(Color(hue: value, saturation: 0.8, brightness: 0.95))
+                    .fill(color)
                     .frame(width: thumbSize, height: thumbSize)
                     .overlay(Circle().stroke(.white, lineWidth: 2))
                     .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
