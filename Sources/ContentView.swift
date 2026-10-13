@@ -5,7 +5,18 @@ import SwiftUI
 private enum Palette {
     static let ink = Color.primary
     static let muted = Color.secondary
-    static let accent = color("blue")
+
+    static func accent(_ preferences: Preferences) -> Color {
+        guard preferences.useCustomAccent else {
+            return balanced(light: (0.20, 0.38, 0.62), dark: (0.52, 0.68, 0.84))
+        }
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(calibratedHue: preferences.customAccentHue,
+                           saturation: dark ? 0.42 : 0.58,
+                           brightness: dark ? 0.84 : 0.65, alpha: 1)
+        })
+    }
 
     private static func balanced(light: (CGFloat, CGFloat, CGFloat),
                                  dark: (CGFloat, CGFloat, CGFloat)) -> Color {
@@ -15,13 +26,13 @@ private enum Palette {
         })
     }
 
-    static func color(_ name: String?) -> Color {
+    static func color(_ name: String?, preferences: Preferences) -> Color {
         switch name {
         case "teal": balanced(light: (0.20, 0.46, 0.47), dark: (0.52, 0.75, 0.73))
         case "orange": balanced(light: (0.64, 0.39, 0.22), dark: (0.84, 0.68, 0.50))
         case "purple": balanced(light: (0.44, 0.35, 0.59), dark: (0.70, 0.61, 0.82))
         case "red": balanced(light: (0.62, 0.34, 0.37), dark: (0.84, 0.62, 0.64))
-        default: balanced(light: (0.20, 0.38, 0.62), dark: (0.52, 0.68, 0.84))
+        default: accent(preferences)
         }
     }
 }
@@ -51,7 +62,7 @@ struct ContentView: View {
             }
             if let message = model.message {
                 HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "info.circle").foregroundStyle(Palette.accent)
+                    Image(systemName: "info.circle").foregroundStyle(Palette.accent(model.state.preferences))
                     Text(message).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     Button { model.message = nil } label: { Image(systemName: "xmark") }
@@ -67,7 +78,7 @@ struct ContentView: View {
         .background(AdjustableGlass(transparency: model.state.preferences.windowTransparency,
                                     enabled: model.state.preferences.useGlass))
         .preferredColorScheme(colorScheme)
-        .tint(Palette.accent)
+        .tint(Palette.accent(model.state.preferences))
         .overlay(alignment: .bottomTrailing) {
             Rectangle()
                 .fill(Color.primary.opacity(0.001))
@@ -127,7 +138,7 @@ struct ContentView: View {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .foregroundStyle(Palette.accent)
+                .foregroundStyle(Palette.accent(model.state.preferences))
                 .frame(width: 30, height: 30)
                 .frame(width: 34)
             VStack(alignment: .leading, spacing: 2) {
@@ -308,7 +319,7 @@ private struct OpenAppsView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
-                .buttonStyle(SoftActionStyle(color: Palette.accent))
+                .buttonStyle(SoftActionStyle(color: Palette.accent(model.state.preferences)))
                 .disabled(model.selectedCount == 0 || model.busy)
             }
             .padding(24)
@@ -360,7 +371,7 @@ private struct ProfilesView: View {
                                     Image(systemName: profile.validSymbol)
                                         .font(.system(size: 17))
                                         .frame(width: 19)
-                                        .foregroundStyle(Palette.color(profile.accent))
+                                        .foregroundStyle(Palette.color(profile.accent, preferences: model.state.preferences))
                                     Text(profile.name).lineLimit(1)
                                 }
                                 .font(.system(size: 13, weight: model.selectedProfileID == profile.id ? .semibold : .regular))
@@ -411,7 +422,7 @@ private struct ProfilesView: View {
                             Label("Run \(profile.name.isEmpty ? "Profile" : profile.name)", systemImage: "play.fill")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(SoftActionStyle(color: Palette.color(profile.accent)))
+                        .buttonStyle(SoftActionStyle(color: Palette.color(profile.accent, preferences: model.state.preferences)))
                         .disabled(model.busy)
                         if !model.state.restorableApps.isEmpty {
                             Button("Restore Previous Workspace") { model.restoreWorkspace() }
@@ -444,9 +455,9 @@ private struct ProfilesView: View {
             HStack(spacing: 10) {
                 Image(systemName: profile.validSymbol)
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(Palette.color(profile.accent))
+                    .foregroundStyle(Palette.color(profile.accent, preferences: model.state.preferences))
                     .frame(width: 40, height: 40)
-                    .background(Palette.color(profile.accent).opacity(0.13),
+                    .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13),
                                 in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
@@ -506,7 +517,7 @@ private struct ProfilesView: View {
                     HStack(spacing: 7) {
                         Image(systemName: profile.validSymbol)
                             .font(.system(size: 18))
-                            .foregroundStyle(Palette.color(profile.accent))
+                            .foregroundStyle(Palette.color(profile.accent, preferences: model.state.preferences))
                         Text("Choose")
                         Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
                     }
@@ -526,11 +537,11 @@ private struct ProfilesView: View {
                 ))
                 .textFieldStyle(.roundedBorder)
                 Picker("Accent", selection: Binding(
-                    get: { model.selectedProfile?.accent ?? "none" },
-                    set: { value in model.updateProfile(profile.id) { $0.accent = value == "none" ? nil : value } }
+                    get: { model.selectedProfile?.accent ?? "blue" },
+                    set: { value in model.updateProfile(profile.id) { $0.accent = value == "blue" ? nil : value } }
                 )) {
-                    ForEach(["none", "blue", "teal", "orange", "purple", "red"], id: \.self) { color in
-                        Text(color.capitalized).tag(color)
+                    ForEach(["blue", "teal", "orange", "purple", "red"], id: \.self) { color in
+                        Text(color == "blue" ? "App color" : color.capitalized).tag(color)
                     }
                 }
                 .frame(width: 125)
@@ -558,8 +569,8 @@ private struct ProfilesView: View {
                                 Text(choice.title).font(.caption2).lineLimit(1)
                             }
                             .frame(maxWidth: .infinity, minHeight: 50)
-                            .foregroundStyle(profile.symbol == choice.id ? Palette.color(profile.accent) : Color.primary)
-                            .background(profile.symbol == choice.id ? Palette.color(profile.accent).opacity(0.13) : Color.primary.opacity(0.045),
+                            .foregroundStyle(profile.symbol == choice.id ? Palette.color(profile.accent, preferences: model.state.preferences) : Color.primary)
+                            .background(profile.symbol == choice.id ? Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13) : Color.primary.opacity(0.045),
                                         in: RoundedRectangle(cornerRadius: 8))
                             .contentShape(RoundedRectangle(cornerRadius: 8))
                         }
@@ -687,11 +698,11 @@ struct SettingsView: View {
                         .renderingMode(.template)
                         .resizable()
                         .scaledToFit()
-                        .foregroundStyle(Palette.accent)
-                        .frame(width: 32, height: 32)
-                        .frame(width: 56, height: 56)
-                        .background(Palette.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 15))
-                        .contentShape(RoundedRectangle(cornerRadius: 15))
+                        .foregroundStyle(Palette.accent(model.state.preferences))
+                        .frame(width: 27, height: 27)
+                        .frame(width: 48, height: 48)
+                        .background(Palette.accent(model.state.preferences).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
                 .help("Change menu bar icon")
@@ -699,18 +710,18 @@ struct SettingsView: View {
                 .popover(isPresented: $showingSymbols, arrowEdge: .bottom) { symbolPicker }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Settings").font(.system(size: 22, weight: .semibold))
+                    Text("Settings").font(.system(size: 20, weight: .semibold))
                     Text("Click the icon to choose your menu bar symbol")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
             Divider()
 
             ScrollView {
-                VStack(spacing: 14) {
+                VStack(spacing: 12) {
                     if let message = model.message {
                         HStack(spacing: 8) {
                             Image(systemName: "info.circle")
@@ -720,7 +731,7 @@ struct SettingsView: View {
                         }
                         .font(.caption)
                         .padding(12)
-                        .background(Palette.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
+                        .background(Palette.accent(model.state.preferences).opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
                     }
 
                     card("General", symbol: "switch.2") {
@@ -739,28 +750,53 @@ struct SettingsView: View {
                     }
 
                     card("Appearance", symbol: "circle.lefthalf.filled") {
-                        Picker("Theme", selection: Binding(
-                            get: { model.state.preferences.appearance },
-                            set: { value in model.updatePreferences { $0.appearance = value } }
-                        )) {
-                            Text("System").tag("system")
-                            Text("Light").tag("light")
-                            Text("Dark").tag("dark")
+                        HStack(spacing: 10) {
+                            Text("Theme").font(.subheadline).frame(width: 88, alignment: .leading)
+                            Picker("Theme", selection: Binding(
+                                get: { model.state.preferences.appearance },
+                                set: { value in model.updatePreferences { $0.appearance = value } }
+                            )) {
+                                Text("System").tag("system")
+                                Text("Light").tag("light")
+                                Text("Dark").tag("dark")
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
                         }
-                        .pickerStyle(.segmented)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(spacing: 8) {
+                                Text("Accent color").font(.subheadline)
+                                Spacer()
+                                Circle()
+                                    .fill(Palette.accent(model.state.preferences))
+                                    .frame(width: 17, height: 17)
+                                Button("Default") {
+                                    model.updatePreferences { $0.useCustomAccent = false }
+                                }
+                                .controlSize(.small)
+                                .disabled(!model.state.preferences.useCustomAccent)
+                            }
+                            AccentHueSlider(value: Binding(
+                                get: { model.state.preferences.customAccentHue },
+                                set: { model.setAccentHue($0, persist: false) }
+                            ), onCommit: { model.save() })
+                        }
 
                         Toggle("Use Liquid Glass", isOn: Binding(
                             get: { model.state.preferences.useGlass },
                             set: { value in model.updatePreferences { $0.useGlass = value } }
                         ))
-                        Toggle("Show profile list", isOn: Binding(
-                            get: { model.state.preferences.showProfileStrip },
-                            set: { value in model.updatePreferences { $0.showProfileStrip = value } }
-                        ))
-                        Text("The list appears when you have more than one profile.")
-                            .font(.caption).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Toggle("Show profile list", isOn: Binding(
+                                get: { model.state.preferences.showProfileStrip },
+                                set: { value in model.updatePreferences { $0.showProfileStrip = value } }
+                            ))
+                            Text("Shown when you have more than one profile.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         HStack(spacing: 10) {
-                            Text("Transparency").font(.subheadline)
+                            Text("Transparency").font(.subheadline).frame(width: 88, alignment: .leading)
                             Slider(value: Binding(
                                 get: { model.state.preferences.windowTransparency },
                                 set: { value in model.updatePreferences { $0.windowTransparency = value } }
@@ -805,14 +841,14 @@ struct SettingsView: View {
                     }
 
                 }
-                .padding(20)
+                .padding(16)
                 .frame(maxWidth: .infinity)
             }
         }
         .frame(minWidth: 430, minHeight: 500)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(colorScheme)
-        .tint(Palette.accent)
+        .tint(Palette.accent(model.state.preferences))
     }
 
     private var colorScheme: ColorScheme? {
@@ -841,8 +877,8 @@ struct SettingsView: View {
                             Text(choice.title).font(.caption2).lineLimit(1)
                         }
                         .frame(maxWidth: .infinity, minHeight: 54)
-                        .foregroundStyle(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent : Color.primary)
-                        .background(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent.opacity(0.14) : Color.primary.opacity(0.05),
+                        .foregroundStyle(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent(model.state.preferences) : Color.primary)
+                        .background(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent(model.state.preferences).opacity(0.14) : Color.primary.opacity(0.05),
                                     in: RoundedRectangle(cornerRadius: 10))
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
@@ -857,15 +893,74 @@ struct SettingsView: View {
 
     private func card<Content: View>(_ title: String, symbol: String,
                                      @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: symbol)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Palette.accent)
+                .foregroundStyle(Palette.accent(model.state.preferences))
             content()
         }
-        .padding(17)
+        .padding(15)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+private struct AccentHueSlider: View {
+    @Binding var value: Double
+    let onCommit: () -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let thumbSize: CGFloat = 18
+            let travel = max(0, geometry.size.width - thumbSize)
+
+            ZStack(alignment: .leading) {
+                LinearGradient(
+                    colors: [.red, .orange, .yellow, .green, .cyan, .blue, .purple, .pink, .red],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(height: 7)
+                .clipShape(Capsule())
+
+                Circle()
+                    .fill(Color(hue: value, saturation: 0.8, brightness: 0.95))
+                    .frame(width: thumbSize, height: thumbSize)
+                    .overlay(Circle().stroke(.white, lineWidth: 2))
+                    .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+                    .offset(x: travel * value)
+            }
+            .frame(height: geometry.size.height)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { gesture in
+                    value = min(1, max(0, (gesture.location.x - thumbSize / 2) / max(travel, 1)))
+                }
+                .onEnded { _ in onCommit() })
+        }
+        .frame(height: 24)
+        .focusable()
+        .onKeyPress(.leftArrow) {
+            value = max(0, value - 1.0 / 36)
+            onCommit()
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            value = min(1, value + 1.0 / 36)
+            onCommit()
+            return .handled
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Accent color")
+        .accessibilityValue("\(Int((value * 360).rounded())) degrees")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: value = min(1, value + 1.0 / 36)
+            case .decrement: value = max(0, value - 1.0 / 36)
+            @unknown default: return
+            }
+            onCommit()
+        }
     }
 }
 

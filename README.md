@@ -12,7 +12,7 @@ Native macOS menu bar utility for quitting selected running applications and sav
 - Choose a profile symbol from the scrollable gallery or enter another SF Symbol name. Each profile can have its own muted accent color.
 - Profile workspace restoration records the apps that actually quit and can reopen their application bundles later. It does not restore unsaved documents or exact window positions.
 - No keyboard shortcut is set by default. Record one in Settings if desired.
-- Settings has a Liquid Glass transparency slider, light, dark, or system appearance, and a **Quit App Closer** button. Drag the lower-right corner of the main panel to resize it.
+- Settings has a color slider for the app accent, a Liquid Glass transparency slider, light, dark, or system appearance, and a **Quit App Closer** button. Drag the lower-right corner of the main panel to resize it.
 - Click the symbol at the top of Settings to choose among twelve menu bar symbols, including the original App Closer mark. The app icon uses that same overlapping-window and close motif.
 
 App Closer sends ordinary macOS quit requests. Apps with unsaved work can present their own save dialogs. App Closer never force quits them.

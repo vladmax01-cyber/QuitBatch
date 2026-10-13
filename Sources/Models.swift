@@ -60,6 +60,8 @@ struct Preferences: Codable, Equatable {
     var shortcut: Shortcut? = nil
     var useGlass = true
     var showProfileStrip = true
+    var useCustomAccent = false
+    var customAccentHue = 0.59
     var windowTransparency = 0.08
     var windowWidth = 440.0
     var windowHeight = 626.0
@@ -67,7 +69,8 @@ struct Preferences: Codable, Equatable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case launchAtLogin, confirmBeforeQuitting, appearance, menuBarSymbol, shortcut, useGlass, showProfileStrip, windowTransparency,
+        case launchAtLogin, confirmBeforeQuitting, appearance, menuBarSymbol, shortcut, useGlass, showProfileStrip,
+             useCustomAccent, customAccentHue, windowTransparency,
              windowWidth, windowHeight
     }
 
@@ -82,6 +85,8 @@ struct Preferences: Codable, Equatable {
         shortcut = try values.decodeIfPresent(Shortcut.self, forKey: .shortcut)
         useGlass = try values.decodeIfPresent(Bool.self, forKey: .useGlass) ?? true
         showProfileStrip = try values.decodeIfPresent(Bool.self, forKey: .showProfileStrip) ?? true
+        useCustomAccent = try values.decodeIfPresent(Bool.self, forKey: .useCustomAccent) ?? false
+        customAccentHue = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .customAccentHue) ?? 0.59))
         windowTransparency = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .windowTransparency) ?? 0.08))
         windowWidth = min(720, max(420, try values.decodeIfPresent(Double.self, forKey: .windowWidth) ?? 440))
         windowHeight = min(900, max(520, try values.decodeIfPresent(Double.self, forKey: .windowHeight) ?? 626))

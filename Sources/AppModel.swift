@@ -323,6 +323,12 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setAccentHue(_ hue: Double, persist: Bool) {
+        state.preferences.customAccentHue = min(1, max(0, hue))
+        state.preferences.useCustomAccent = true
+        if persist { save() }
+    }
+
     func resizePopover(width: Double, height: Double, persist: Bool) {
         let newWidth = min(720, max(420, width.rounded()))
         let newHeight = min(900, max(520, height.rounded()))

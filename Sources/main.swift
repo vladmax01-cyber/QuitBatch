@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var hotKeyHandler: EventHandlerRef?
     private var outsideClickMonitor: Any?
     private var settingsClickMonitor: Any?
+    private var suppressStatusReopenUntil = 0.0
     #if UI_PREVIEW
     private var previewWindow: NSWindow?
     #endif
@@ -39,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = NSHostingController(rootView: ContentView(model: model) { [weak self] in
             self?.openSettingsWindow()
         } closePanel: { [weak self] in
-            self?.popover.performClose(nil)
+            self?.dismissPopover()
         })
 
         model.onShortcutChanged = { [weak self] shortcut in self?.registerShortcut(shortcut) }
@@ -73,16 +74,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if NSApp.currentEvent?.modifierFlags.contains(.option) == true {
             showQuickActions()
         } else {
+            guard popover.isShown || ProcessInfo.processInfo.systemUptime >= suppressStatusReopenUntil else { return }
             togglePopover()
         }
     }
 
     private func togglePopover() {
         guard let button = statusItem.button else { return }
-        if popover.isShown { popover.performClose(nil) }
+        if popover.isShown { dismissPopover() }
         else {
             showPopover(relativeTo: button)
         }
+    }
+
+    private func dismissPopover() {
+        guard popover.isShown else { return }
+        suppressStatusReopenUntil = ProcessInfo.processInfo.systemUptime + 0.3
+        popover.close()
     }
 
     private func showPopover(relativeTo button: NSStatusBarButton) {
@@ -94,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showQuickActions() {
         guard let button = statusItem.button else { return }
-        popover.performClose(nil)
+        dismissPopover()
         let menu = NSMenu(title: "App Closer Profiles")
         if model.state.profiles.isEmpty {
             let empty = NSMenuItem(title: "No saved profiles", action: nil, keyEquivalent: "")
@@ -134,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func openMain() { togglePopover() }
     @objc private func openSettingsWindow() {
-        popover.performClose(nil)
+        dismissPopover()
         if let settingsWindow {
             settingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -157,17 +165,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func monitorOutsideClicks() {
         guard outsideClickMonitor == nil else { return }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            DispatchQueue.main.async { self?.popover.performClose(nil) }
+            let clickLocation = NSEvent.mouseLocation
+            DispatchQueue.main.async {
+                guard let self, self.popover.isShown else { return }
+                if let button = self.statusItem.button, let window = button.window {
+                    let buttonFrame = window.convertToScreen(button.convert(button.bounds, to: nil))
+                    if buttonFrame.insetBy(dx: -4, dy: -4).contains(clickLocation) { return }
+                }
+                self.dismissPopover()
+            }
         }
         settingsClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             if let self, self.popover.isShown, event.window === self.settingsWindow {
-                self.popover.performClose(nil)
+                self.dismissPopover()
             }
             return event
         }
     }
 
     func popoverDidClose(_ notification: Notification) {
+        suppressStatusReopenUntil = ProcessInfo.processInfo.systemUptime + 0.3
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         if let settingsClickMonitor { NSEvent.removeMonitor(settingsClickMonitor) }
         outsideClickMonitor = nil
