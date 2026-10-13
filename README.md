@@ -4,7 +4,7 @@ Native macOS menu bar utility for quitting selected running applications and sav
 
 ## Use
 
-- Click the menu bar icon to open **Open Apps** and **Profiles** with a brief fade; click it again, click outside the panel, or use its close button to dismiss it. The fade respects macOS Reduce Motion. Use the gear button to open **Settings** in its own window.
+- Click the menu bar icon to open **Open Apps** and **Profiles** with a brief fade; click it again, click outside the panel, or use its close button to dismiss it. The fade respects macOS Reduce Motion. Use the gear button to open **Settings** in a consistently sized, scrollable window.
 - In Open Apps, type in the search field to filter running applications. **Select All** and **Deselect All** act on the visible results. Click a checkbox or anywhere on an application row, then choose **Quit Selected Apps**. Protected system apps and LockDown Browser cannot be selected.
 - Option-click the menu bar icon to run a saved profile directly.
 - In Profiles, use **Edit** in the selected profile card to change its name, symbol, or accent. Duplicate and delete are in the card's **More** menu. **Close** and **Keep Open** can each be collapsed; their collapsed state remains while switching between Open Apps and Profiles. With multiple profiles, use **Hide list** or **Show list** beside **New**, or change the setting in Settings. When the list is hidden, use the profile picker to switch profiles. Use **Select All** in **Close** to add currently running eligible apps, except those in **Keep Open**. **Deselect All** clears the Close list and turns off automatic inclusion so no running app remains marked to close.
