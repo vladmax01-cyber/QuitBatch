@@ -18,7 +18,19 @@ enum SymbolCatalog {
         .init(id: "airplane", title: "Travel"),
         .init(id: "music.note", title: "Music"),
         .init(id: "books.vertical", title: "Study"),
-        .init(id: "desktopcomputer", title: "Desktop")
+        .init(id: "desktopcomputer", title: "Desktop"),
+        .init(id: "heart.text.square", title: "Health"),
+        .init(id: "cross.case", title: "Care"),
+        .init(id: "doc.text", title: "Documents"),
+        .init(id: "checklist", title: "Checklist"),
+        .init(id: "calendar", title: "Calendar"),
+        .init(id: "clock", title: "Time"),
+        .init(id: "envelope", title: "Mail"),
+        .init(id: "message", title: "Messages"),
+        .init(id: "paintbrush", title: "Creative"),
+        .init(id: "camera", title: "Photos"),
+        .init(id: "globe", title: "Web"),
+        .init(id: "lock.shield", title: "Privacy")
     ]
 
     static let menuBarChoices: [SymbolChoice] = [
@@ -27,7 +39,13 @@ enum SymbolCatalog {
         .init(id: "square.stack.3d.up", title: "Stack"),
         .init(id: "macwindow.on.rectangle", title: "Windows"),
         .init(id: "rectangle.stack", title: "Layers"),
-        .init(id: "checkmark.shield", title: "Shield")
+        .init(id: "checkmark.shield", title: "Shield"),
+        .init(id: "moon.stars", title: "Focus"),
+        .init(id: "briefcase", title: "Work"),
+        .init(id: "graduationcap", title: "Study"),
+        .init(id: "calendar", title: "Calendar"),
+        .init(id: "heart", title: "Health"),
+        .init(id: "gearshape", title: "Settings")
     ]
 
     static func menuBarImage(for choice: String) -> NSImage {

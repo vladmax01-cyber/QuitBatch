@@ -29,7 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.action = #selector(statusClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        popover.behavior = .transient
+        // Outside clicks are handled below so a status-item click can toggle the panel reliably.
+        popover.behavior = .applicationDefined
         popover.animates = false
         popover.delegate = self
         popover.contentSize = NSSize(width: model.state.preferences.windowWidth,

@@ -5,16 +5,23 @@ import SwiftUI
 private enum Palette {
     static let ink = Color.primary
     static let muted = Color.secondary
-    static let accent = Color(red: 0.25, green: 0.43, blue: 0.72)
+    static let accent = color("blue")
+
+    private static func balanced(light: (CGFloat, CGFloat, CGFloat),
+                                 dark: (CGFloat, CGFloat, CGFloat)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let components = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: components.0, green: components.1, blue: components.2, alpha: 1)
+        })
+    }
 
     static func color(_ name: String?) -> Color {
         switch name {
-        case "blue": .blue
-        case "teal": .teal
-        case "orange": .orange
-        case "purple": .purple
-        case "red": .red
-        default: .accentColor
+        case "teal": balanced(light: (0.20, 0.46, 0.47), dark: (0.52, 0.75, 0.73))
+        case "orange": balanced(light: (0.64, 0.39, 0.22), dark: (0.84, 0.68, 0.50))
+        case "purple": balanced(light: (0.44, 0.35, 0.59), dark: (0.70, 0.61, 0.82))
+        case "red": balanced(light: (0.62, 0.34, 0.37), dark: (0.84, 0.62, 0.64))
+        default: balanced(light: (0.20, 0.38, 0.62), dark: (0.52, 0.68, 0.84))
         }
     }
 }
@@ -60,6 +67,7 @@ struct ContentView: View {
         .background(AdjustableGlass(transparency: model.state.preferences.windowTransparency,
                                     enabled: model.state.preferences.useGlass))
         .preferredColorScheme(colorScheme)
+        .tint(Palette.accent)
         .overlay(alignment: .bottomTrailing) {
             Rectangle()
                 .fill(Color.primary.opacity(0.001))
@@ -538,27 +546,30 @@ private struct ProfilesView: View {
     private func profileSymbolPicker(_ profile: AppProfile) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Profile symbol").font(.headline)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
-                ForEach(SymbolCatalog.profileChoices) { choice in
-                    Button {
-                        model.updateProfile(profile.id) { $0.symbol = choice.id }
-                        showingProfileSymbols = false
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: choice.id).font(.system(size: 21))
-                            Text(choice.title).font(.caption2).lineLimit(1)
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                    ForEach(SymbolCatalog.profileChoices) { choice in
+                        Button {
+                            model.updateProfile(profile.id) { $0.symbol = choice.id }
+                            showingProfileSymbols = false
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: choice.id).font(.system(size: 21))
+                                Text(choice.title).font(.caption2).lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .foregroundStyle(profile.symbol == choice.id ? Palette.color(profile.accent) : Color.primary)
+                            .background(profile.symbol == choice.id ? Palette.color(profile.accent).opacity(0.13) : Color.primary.opacity(0.045),
+                                        in: RoundedRectangle(cornerRadius: 8))
+                            .contentShape(RoundedRectangle(cornerRadius: 8))
                         }
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                        .foregroundStyle(profile.symbol == choice.id ? Palette.color(profile.accent) : Color.primary)
-                        .background(profile.symbol == choice.id ? Palette.color(profile.accent).opacity(0.13) : Color.primary.opacity(0.045),
-                                    in: RoundedRectangle(cornerRadius: 8))
-                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Choose \(choice.title) symbol")
+                        .accessibilityAddTraits(profile.symbol == choice.id ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Choose \(choice.title) symbol")
-                    .accessibilityAddTraits(profile.symbol == choice.id ? .isSelected : [])
                 }
             }
+            .frame(height: 235)
         }
         .padding(13)
         .frame(width: 310)
@@ -801,6 +812,7 @@ struct SettingsView: View {
         .frame(minWidth: 430, minHeight: 500)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(colorScheme)
+        .tint(Palette.accent)
     }
 
     private var colorScheme: ColorScheme? {

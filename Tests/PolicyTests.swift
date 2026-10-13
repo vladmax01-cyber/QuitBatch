@@ -18,6 +18,8 @@ struct PolicyTests {
         precondition(Set(SymbolCatalog.profileChoices.map(\.id)).count == SymbolCatalog.profileChoices.count)
         precondition(Set(SymbolCatalog.menuBarChoices.map(\.id)).count == SymbolCatalog.menuBarChoices.count)
         precondition(SymbolCatalog.profileChoices.allSatisfy { NSImage(systemSymbolName: $0.id, accessibilityDescription: nil) != nil })
+        precondition(SymbolCatalog.menuBarChoices.filter { $0.id != "appcloser" }
+            .allSatisfy { NSImage(systemSymbolName: $0.id, accessibilityDescription: nil) != nil })
         precondition(SymbolCatalog.menuBarImage(for: "appcloser").isTemplate)
 
         var profile = original.profiles[0]
