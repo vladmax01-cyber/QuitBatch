@@ -21,6 +21,12 @@ private enum Palette {
         })
     }
 
+    static func textOnAccent(_ preferences: Preferences) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            AccentTone.textOnFill(resolvedAccent(preferences, appearance: appearance))
+        })
+    }
+
     private static func resolvedAccent(_ preferences: Preferences, appearance: NSAppearance) -> NSColor {
         let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         var base = NSColor(calibratedHue: preferences.customAccentHue,
@@ -34,29 +40,48 @@ private enum Palette {
         return AccentTone.adjusted(base, darkness: preferences.accentDarkness, darkAppearance: dark)
     }
 
+    private static func profileColors(_ name: String?) ->
+        (light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat))? {
+        switch name {
+        case "teal": ((0.20, 0.46, 0.47), (0.52, 0.75, 0.73))
+        case "orange": ((0.64, 0.39, 0.22), (0.84, 0.68, 0.50))
+        case "purple": ((0.44, 0.35, 0.59), (0.70, 0.61, 0.82))
+        case "red": ((0.62, 0.34, 0.37), (0.84, 0.62, 0.64))
+        default: nil
+        }
+    }
+
     private static func balanced(light: (CGFloat, CGFloat, CGFloat),
-                                 dark: (CGFloat, CGFloat, CGFloat)) -> Color {
+                                 dark: (CGFloat, CGFloat, CGFloat),
+                                 preferences: Preferences, readable: Bool = false,
+                                 textOnFill: Bool = false) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            let components = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
-            return NSColor(srgbRed: components.0, green: components.1, blue: components.2, alpha: 1)
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let components = isDark ? dark : light
+            let base = NSColor(srgbRed: components.0, green: components.1, blue: components.2, alpha: 1)
+            let color = AccentTone.adjusted(base, darkness: preferences.accentDarkness,
+                                            darkAppearance: isDark)
+            if textOnFill { return AccentTone.textOnFill(color) }
+            return readable && preferences.accentDarkness > 0 ?
+                AccentTone.readableForeground(color, darkAppearance: isDark) : color
         })
     }
 
     static func color(_ name: String?, preferences: Preferences) -> Color {
-        switch name {
-        case "teal": balanced(light: (0.20, 0.46, 0.47), dark: (0.52, 0.75, 0.73))
-        case "orange": balanced(light: (0.64, 0.39, 0.22), dark: (0.84, 0.68, 0.50))
-        case "purple": balanced(light: (0.44, 0.35, 0.59), dark: (0.70, 0.61, 0.82))
-        case "red": balanced(light: (0.62, 0.34, 0.37), dark: (0.84, 0.62, 0.64))
-        default: accent(preferences)
-        }
+        guard let colors = profileColors(name) else { return accent(preferences) }
+        return balanced(light: colors.light, dark: colors.dark, preferences: preferences)
     }
 
     static func foregroundColor(_ name: String?, preferences: Preferences) -> Color {
-        switch name {
-        case "teal", "orange", "purple", "red": color(name, preferences: preferences)
-        default: accentForeground(preferences)
-        }
+        guard let colors = profileColors(name) else { return accentForeground(preferences) }
+        return balanced(light: colors.light, dark: colors.dark, preferences: preferences,
+                        readable: true)
+    }
+
+    static func textOnColor(_ name: String?, preferences: Preferences) -> Color {
+        guard let colors = profileColors(name) else { return textOnAccent(preferences) }
+        return balanced(light: colors.light, dark: colors.dark, preferences: preferences,
+                        textOnFill: true)
     }
 }
 
@@ -101,7 +126,7 @@ struct ContentView: View {
         .background(AdjustableGlass(transparency: model.state.preferences.windowTransparency,
                                     enabled: model.state.preferences.useGlass))
         .preferredColorScheme(colorScheme)
-        .tint(Palette.accent(model.state.preferences))
+        .tint(Palette.accentForeground(model.state.preferences))
         .overlay(alignment: .bottomTrailing) {
             Rectangle()
                 .fill(Color.primary.opacity(0.001))
@@ -342,7 +367,8 @@ private struct OpenAppsView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
-                .buttonStyle(SoftActionStyle(color: Palette.accent(model.state.preferences)))
+                .buttonStyle(SoftActionStyle(color: Palette.accent(model.state.preferences),
+                                             textColor: Palette.textOnAccent(model.state.preferences)))
                 .disabled(model.selectedCount == 0 || model.busy)
             }
             .padding(24)
@@ -400,7 +426,9 @@ private struct ProfilesView: View {
                                 .font(.system(size: 13, weight: model.selectedProfileID == profile.id ? .semibold : .regular))
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 8)
-                                .background(model.selectedProfileID == profile.id ? Color.primary.opacity(0.11) : Color.primary.opacity(0.04),
+                                .background(model.selectedProfileID == profile.id ?
+                                            Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.14) :
+                                            Color.primary.opacity(0.04),
                                             in: RoundedRectangle(cornerRadius: 9))
                                 .contentShape(RoundedRectangle(cornerRadius: 9))
                             }
@@ -445,7 +473,8 @@ private struct ProfilesView: View {
                             Label("Run \(profile.name.isEmpty ? "Profile" : profile.name)", systemImage: "play.fill")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(SoftActionStyle(color: Palette.color(profile.accent, preferences: model.state.preferences)))
+                        .buttonStyle(SoftActionStyle(color: Palette.color(profile.accent, preferences: model.state.preferences),
+                                                     textColor: Palette.textOnColor(profile.accent, preferences: model.state.preferences)))
                         .disabled(model.busy)
                         if !model.state.restorableApps.isEmpty {
                             Button("Restore Previous Workspace") { model.restoreWorkspace() }
@@ -454,6 +483,7 @@ private struct ProfilesView: View {
                     }
                     .padding(16)
                 }
+                .tint(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
             } else {
                 ContentUnavailableView("No profile selected", systemImage: "square.on.square",
                                        description: Text("Create a profile to save an app list."))
@@ -494,7 +524,10 @@ private struct ProfilesView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Button(editingProfile ? "Done" : "Edit") { editingProfile.toggle() }
+                Button { editingProfile.toggle() } label: {
+                    Text(editingProfile ? "Done" : "Edit")
+                        .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
+                }
                     .controlSize(.small)
                     .buttonStyle(.bordered)
                     .accessibilityLabel(editingProfile ? "Finish editing profile" : "Edit profile")
@@ -528,7 +561,7 @@ private struct ProfilesView: View {
                 Divider().frame(height: 18)
                 Button { keepExpanded = true } label: {
                     profileActivityLabel("\(runningKept) kept open", symbol: "checkmark.circle")
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                 }
                 .buttonStyle(.plain)
                 .help("Show apps kept open by this profile")
@@ -539,14 +572,16 @@ private struct ProfilesView: View {
                     .help("Protected apps cannot be closed by App Closer")
             }
             .padding(.vertical, 2)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.055),
+                        in: RoundedRectangle(cornerRadius: 8))
             if editingProfile {
                 Divider()
                 profileEditor(profile)
             }
         }
         .padding(12)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+        .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.065),
+                    in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func profileActivityLabel(_ title: String, symbol: String) -> some View {
@@ -576,7 +611,10 @@ private struct ProfilesView: View {
                             .font(.system(size: 18))
                             .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                         Text("Choose")
-                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                     }
                 }
                 .controlSize(.small)
@@ -752,7 +790,8 @@ private struct ProfilesView: View {
             }
         }
         .padding(11)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 11))
+        .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.045),
+                    in: RoundedRectangle(cornerRadius: 11))
     }
 
 }
@@ -886,10 +925,16 @@ struct SettingsView: View {
                                     }
                                 }
                                 HStack(spacing: 10) {
-                                    AccentHueSlider(value: Binding(
+                                    ColorRampSlider(value: Binding(
                                         get: { model.state.preferences.customAccentHue },
                                         set: { model.setAccentHue($0, persist: false) }
-                                    ), color: Palette.accent(model.state.preferences), onCommit: { model.save() })
+                                    ), gradient: [.red, .orange, .yellow, .green, .cyan, .blue,
+                                                  .purple, .pink, .red],
+                                       color: Palette.accent(model.state.preferences),
+                                       label: "Accent color",
+                                       valueDescription: "\(Int((model.state.preferences.customAccentHue * 360).rounded())) degrees",
+                                       keyboardStep: 1.0 / 36,
+                                       onCommit: { model.save() })
                                     Circle()
                                         .fill(Palette.accent(model.state.preferences))
                                         .frame(width: 17, height: 17)
@@ -902,14 +947,16 @@ struct SettingsView: View {
                         HStack(spacing: 10) {
                             Text("Darken color").font(.subheadline)
                                 .frame(width: 96, alignment: .leading)
-                            Slider(value: Binding(
+                            ColorRampSlider(value: Binding(
                                 get: { model.state.preferences.accentDarkness },
                                 set: { model.setAccentDarkness($0, persist: false) }
-                            ), in: 0...1, onEditingChanged: { editing in
-                                if !editing { model.save() }
-                            })
-                            .accessibilityLabel("Darken accent color")
-                            .help("Deepens the accent while keeping its labels readable")
+                            ), gradient: darknessRamp,
+                               color: Palette.accent(model.state.preferences),
+                               label: "Darken accent color",
+                               valueDescription: "\(Int((model.state.preferences.accentDarkness * 100).rounded())) percent",
+                               keyboardStep: 0.01,
+                               onCommit: { model.save() })
+                                .help("Deepens app and profile accents while keeping labels readable")
                             Text("\(Int((model.state.preferences.accentDarkness * 100).rounded()))%")
                                 .font(.caption.monospacedDigit())
                                 .frame(width: 38, alignment: .trailing)
@@ -982,7 +1029,7 @@ struct SettingsView: View {
         .frame(minWidth: 430, minHeight: 500)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(colorScheme)
-        .tint(Palette.accent(model.state.preferences))
+        .tint(Palette.accentForeground(model.state.preferences))
     }
 
     private var colorScheme: ColorScheme? {
@@ -990,6 +1037,14 @@ struct SettingsView: View {
         case "light": .light
         case "dark": .dark
         default: nil
+        }
+    }
+
+    private var darknessRamp: [Color] {
+        [0.0, 0.25, 0.5, 0.75, 1.0].map { depth in
+            var sample = model.state.preferences
+            sample.accentDarkness = depth
+            return Palette.accent(sample)
         }
     }
 
@@ -1037,10 +1092,14 @@ struct SettingsView: View {
     }
 }
 
-private struct AccentHueSlider: View {
+private struct ColorRampSlider: View {
     @Binding var value: Double
     @FocusState private var isFocused: Bool
+    let gradient: [Color]
     let color: Color
+    let label: String
+    let valueDescription: String
+    let keyboardStep: Double
     let onCommit: () -> Void
 
     var body: some View {
@@ -1049,11 +1108,7 @@ private struct AccentHueSlider: View {
             let travel = max(0, geometry.size.width - thumbSize)
 
             ZStack(alignment: .leading) {
-                LinearGradient(
-                    colors: [.red, .orange, .yellow, .green, .cyan, .blue, .purple, .pink, .red],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
+                LinearGradient(colors: gradient, startPoint: .leading, endPoint: .trailing)
                 .frame(height: 7)
                 .clipShape(Capsule())
 
@@ -1081,22 +1136,22 @@ private struct AccentHueSlider: View {
         .focused($isFocused)
         .focusEffectDisabled()
         .onKeyPress(.leftArrow) {
-            value = max(0, value - 1.0 / 36)
+            value = max(0, value - keyboardStep)
             onCommit()
             return .handled
         }
         .onKeyPress(.rightArrow) {
-            value = min(1, value + 1.0 / 36)
+            value = min(1, value + keyboardStep)
             onCommit()
             return .handled
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Accent color")
-        .accessibilityValue("\(Int((value * 360).rounded())) degrees")
+        .accessibilityLabel(label)
+        .accessibilityValue(valueDescription)
         .accessibilityAdjustableAction { direction in
             switch direction {
-            case .increment: value = min(1, value + 1.0 / 36)
-            case .decrement: value = max(0, value - 1.0 / 36)
+            case .increment: value = min(1, value + keyboardStep)
+            case .decrement: value = max(0, value - keyboardStep)
             @unknown default: return
             }
             onCommit()
@@ -1146,11 +1201,12 @@ private struct SoftActionStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let color: Color
+    let textColor: Color
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(textColor)
             .padding(.vertical, 11)
             .background(color.opacity(isEnabled ? 1 : 0.4), in: RoundedRectangle(cornerRadius: 11))
             .contentShape(RoundedRectangle(cornerRadius: 11))
