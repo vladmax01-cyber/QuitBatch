@@ -24,13 +24,13 @@ Turn on **Include newly detected apps** if anything you haven't listed under Kee
 
 ### Reach it from the menu bar
 
-Click the menu bar symbol to open or close the panel. Clicking outside also dismisses it. The opening fade is brief and respects Reduce Motion. Option-click the symbol for a menu of saved profiles, or record a keyboard shortcut in Settings. The panel can be resized from its lower-right corner.
+Click the menu bar symbol to open or close the panel. Clicking outside also dismisses it. The opening fade is brief and respects Reduce Motion. Option-click the symbol for a menu of saved profiles, or record a keyboard shortcut in Settings. Drag the visible grip in the panel's lower-right corner to resize it; the size is saved. The default panel is compact, and Settings can restore that size.
 
 ### Make it yours
 
-Settings has system, light, and dark appearance; a choice of menu bar symbols; and a custom accent hue. **Darken color** adjusts the accent from 0 to 100% without dimming the window background. You can also change the glass transparency, show or hide the profile list, launch at login, require confirmation before quitting apps, and quit QuitBatch itself. The Settings window keeps a consistent size and scrolls when space is limited.
+Settings has system, light, and dark appearance; a choice of menu bar symbols; and a custom accent hue. **Darken color** adjusts the accent from 0 to 100% without dimming the window background. The Layout section sets icon sizes separately for Open Apps and Profiles, with a smaller default for both. You can also change the glass transparency, show or hide the profile list, launch at login, require confirmation before quitting apps, and quit QuitBatch itself. Settings opens at a compact size and can be resized.
 
-<img src="Assets/Screenshots/settings.png" alt="Appearance and general settings with the system blue accent" width="600">
+<img src="Assets/Screenshots/settings.png" alt="General and layout settings with small icons selected" width="600">
 
 ## Before you use a profile
 

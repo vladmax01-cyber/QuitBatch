@@ -461,9 +461,14 @@ final class AppModel: ObservableObject {
         if persist { save() }
     }
 
+    func setWindowTransparency(_ transparency: Double, persist: Bool) {
+        state.preferences.windowTransparency = min(1, max(0, transparency))
+        if persist { save() }
+    }
+
     func resizePopover(width: Double, height: Double, persist: Bool) {
-        let newWidth = min(720, max(420, width.rounded()))
-        let newHeight = min(900, max(520, height.rounded()))
+        let newWidth = min(720, max(380, width.rounded()))
+        let newHeight = min(900, max(460, height.rounded()))
         guard newWidth != state.preferences.windowWidth || newHeight != state.preferences.windowHeight else {
             if persist { save() }
             return

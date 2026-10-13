@@ -142,11 +142,20 @@ struct ContentView: View {
         .preferredColorScheme(colorScheme)
         .tint(Palette.accentForeground(model.state.preferences))
         .overlay(alignment: .bottomTrailing) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.001))
-                .frame(width: 24, height: 24)
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.secondary.opacity(0.8))
+                .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
+                .help("Drag to resize the panel")
                 .accessibilityLabel("Resize QuitBatch")
+                .accessibilityValue("\(Int(model.state.preferences.windowWidth)) by \(Int(model.state.preferences.windowHeight)) points")
+                .accessibilityAdjustableAction { direction in
+                    let change: Double = direction == .increment ? 20 : -20
+                    model.resizePopover(width: model.state.preferences.windowWidth + change,
+                                        height: model.state.preferences.windowHeight + change,
+                                        persist: true)
+                }
                 .gesture(DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
                         let mouse = NSEvent.mouseLocation
@@ -201,11 +210,11 @@ struct ContentView: View {
                 .resizable()
                 .scaledToFit()
                 .foregroundStyle(Palette.accentForeground(model.state.preferences))
-                .frame(width: 30, height: 30)
-                .frame(width: 34)
+                .frame(width: 26, height: 26)
+                .frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text("QuitBatch").font(.system(size: 18, weight: .semibold))
-                Text("Manage running apps and saved profiles")
+                Text("Quit apps and save profiles")
                     .font(.caption).foregroundStyle(Palette.muted)
             }
             Spacer()
@@ -363,7 +372,8 @@ private struct OpenAppsView: View {
                                 HStack(spacing: 10) {
                                     Image(nsImage: app.icon)
                                         .resizable().interpolation(.high)
-                                        .frame(width: 30, height: 30)
+                                        .frame(width: model.state.preferences.openAppsIconSize.openApp,
+                                               height: model.state.preferences.openAppsIconSize.openApp)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(app.name)
                                             .lineLimit(1)
@@ -486,8 +496,8 @@ private struct ProfilesView: View {
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: profile.validSymbol)
-                                        .font(.system(size: 17))
-                                        .frame(width: 19)
+                                        .font(.system(size: model.state.preferences.profilesIconSize.profileStrip))
+                                        .frame(width: model.state.preferences.profilesIconSize.profileStrip + 2)
                                         .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                                     Text(profile.name).lineLimit(1)
                                 }
@@ -582,9 +592,11 @@ private struct ProfilesView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: profile.validSymbol)
-                    .font(.system(size: 22, weight: .medium))
+                    .font(.system(size: model.state.preferences.profilesIconSize.profileSymbol * 0.55,
+                                  weight: .medium))
                     .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
-                    .frame(width: 40, height: 40)
+                    .frame(width: model.state.preferences.profilesIconSize.profileSymbol,
+                           height: model.state.preferences.profilesIconSize.profileSymbol)
                     .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13),
                                 in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityHidden(true)
@@ -821,7 +833,9 @@ private struct ProfilesView: View {
                     ForEach(entries) { entry in
                         HStack(spacing: 8) {
                             Image(nsImage: ProfileIconCache.image(for: entry))
-                                .resizable().frame(width: 24, height: 24)
+                                .resizable().interpolation(.high)
+                                .frame(width: model.state.preferences.profilesIconSize.profileApp,
+                                       height: model.state.preferences.profilesIconSize.profileApp)
                             Text(entry.name).font(.caption).lineLimit(1)
                             Spacer()
                             if let count = runningCounts[entry.id], count > 1 {
@@ -840,7 +854,9 @@ private struct ProfilesView: View {
                     ForEach(implicitApps) { app in
                         HStack(spacing: 8) {
                             Image(nsImage: app.icon)
-                                .resizable().frame(width: 24, height: 24)
+                                .resizable().interpolation(.high)
+                                .frame(width: model.state.preferences.profilesIconSize.profileApp,
+                                       height: model.state.preferences.profilesIconSize.profileApp)
                             Text(app.name).font(.caption).lineLimit(1)
                             Text(decision == .close ? "Auto" : "Not saved")
                                 .font(.caption2).foregroundStyle(.secondary)
@@ -887,36 +903,32 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 Button { showingSymbols = true } label: {
                     Image(nsImage: SymbolCatalog.menuBarImage(for: model.state.preferences.menuBarSymbol))
                         .renderingMode(.template)
                         .resizable()
                         .scaledToFit()
                         .foregroundStyle(Palette.accentForeground(model.state.preferences))
-                        .frame(width: 27, height: 27)
-                        .frame(width: 48, height: 48)
-                        .background(Palette.accent(model.state.preferences).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                        .contentShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(width: 23, height: 23)
+                        .frame(width: 36, height: 36)
+                        .background(Palette.accent(model.state.preferences).opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
+                        .contentShape(RoundedRectangle(cornerRadius: 9))
                 }
                 .buttonStyle(.plain)
                 .help("Change menu bar icon")
                 .accessibilityLabel("Change menu bar icon")
                 .popover(isPresented: $showingSymbols, arrowEdge: .bottom) { symbolPicker }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Settings").font(.system(size: 20, weight: .semibold))
-                    Text("Click the icon to choose your menu bar symbol")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                Text("Settings").font(.system(size: 18, weight: .semibold))
                 Spacer()
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 13)
             Divider()
 
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     if let message = model.message {
                         HStack(spacing: 8) {
                             Image(systemName: "info.circle")
@@ -942,12 +954,35 @@ struct SettingsView: View {
                             get: { model.state.preferences.forceQuitUnresponsiveApps },
                             set: { value in model.updatePreferences { $0.forceQuitUnresponsiveApps = value } }
                         ))
-                        Text("After a normal quit attempt, force quitting can discard unsaved changes.")
+                        Text("Force quitting can discard unsaved work.")
                             .font(.caption).foregroundStyle(.secondary)
                         Button { NSApp.terminate(nil) } label: {
                             Label("Quit QuitBatch", systemImage: "power")
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+
+                    card("Layout", symbol: "rectangle.on.rectangle") {
+                        iconSizePicker("Open Apps icons", selection: Binding(
+                            get: { model.state.preferences.openAppsIconSize },
+                            set: { value in model.updatePreferences { $0.openAppsIconSize = value } }
+                        ))
+                        iconSizePicker("Profile icons", selection: Binding(
+                            get: { model.state.preferences.profilesIconSize },
+                            set: { value in model.updatePreferences { $0.profilesIconSize = value } }
+                        ))
+                        Divider().padding(.vertical, 2)
+                        HStack(spacing: 10) {
+                            Text("Panel size").font(.subheadline)
+                                .frame(width: 96, alignment: .leading)
+                            Text("Drag the corner to resize.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer(minLength: 4)
+                            Button("Compact") { model.resizePopover(width: 400, height: 500, persist: true) }
+                                .controlSize(.small)
+                                .help("Return the menu panel to its compact size")
+                        }
                     }
 
                     card("Appearance", symbol: "circle.lefthalf.filled") {
@@ -1046,8 +1081,10 @@ struct SettingsView: View {
                             Text("Transparency").font(.subheadline).frame(width: 96, alignment: .leading)
                             Slider(value: Binding(
                                 get: { model.state.preferences.windowTransparency },
-                                set: { value in model.updatePreferences { $0.windowTransparency = value } }
-                            ), in: 0...1)
+                                set: { model.setWindowTransparency($0, persist: false) }
+                            ), in: 0...1, onEditingChanged: { editing in
+                                if !editing { model.save() }
+                            })
                             .accessibilityLabel("Panel transparency")
                             Text("\(Int((model.state.preferences.windowTransparency * 100).rounded()))%")
                                 .font(.caption.monospacedDigit())
@@ -1104,6 +1141,7 @@ struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(colorScheme)
         .tint(Palette.accentForeground(model.state.preferences))
+        .onDisappear { model.save() }
     }
 
     private var colorScheme: ColorScheme? {
@@ -1111,6 +1149,19 @@ struct SettingsView: View {
         case "light": .light
         case "dark": .dark
         default: nil
+        }
+    }
+
+    private func iconSizePicker(_ title: String, selection: Binding<IconSizeOption>) -> some View {
+        HStack(spacing: 10) {
+            Text(title).font(.subheadline).frame(width: 96, alignment: .leading)
+            Picker(title, selection: selection) {
+                ForEach(IconSizeOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
         }
     }
 
@@ -1154,15 +1205,19 @@ struct SettingsView: View {
 
     private func card<Content: View>(_ title: String, symbol: String,
                                      @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Palette.accentForeground(model.state.preferences))
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .frame(width: 16)
+                    .foregroundStyle(Palette.accentForeground(model.state.preferences))
+                Text(title).foregroundStyle(.primary)
+            }
+            .font(.subheadline.weight(.semibold))
             content()
         }
-        .padding(15)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 11))
     }
 }
 

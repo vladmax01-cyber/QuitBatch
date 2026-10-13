@@ -13,6 +13,13 @@ struct PolicyTests {
         let migrated = try JSONDecoder().decode(Preferences.self, from: earlierSettings)
         precondition(migrated.useGlass && migrated.windowTransparency == 0.08)
         precondition(!migrated.forceQuitUnresponsiveApps)
+        precondition(migrated.openAppsIconSize == .small && migrated.profilesIconSize == .small)
+        let iconSettings = try JSONDecoder().decode(Preferences.self,
+            from: Data(#"{"openAppsIconSize":"medium","profilesIconSize":"large"}"#.utf8))
+        precondition(iconSettings.openAppsIconSize == .medium && iconSettings.profilesIconSize == .large)
+        let invalidIconSettings = try JSONDecoder().decode(Preferences.self,
+            from: Data(#"{"openAppsIconSize":"unknown"}"#.utf8))
+        precondition(invalidIconSettings.openAppsIconSize == .small)
         let forceQuitSettings = try JSONDecoder().decode(Preferences.self,
             from: Data(#"{"forceQuitUnresponsiveApps":true}"#.utf8))
         precondition(forceQuitSettings.forceQuitUnresponsiveApps)
@@ -61,7 +68,7 @@ struct PolicyTests {
                 }
             }
         }
-        precondition(migrated.windowWidth == 440 && migrated.windowHeight == 626)
+        precondition(migrated.windowWidth == 400 && migrated.windowHeight == 500)
         precondition(migrated.menuBarSymbol == "appcloser")
         precondition(Set(SymbolCatalog.profileChoices.map(\.id)).count == SymbolCatalog.profileChoices.count)
         precondition(Set(SymbolCatalog.menuBarChoices.map(\.id)).count == SymbolCatalog.menuBarChoices.count)
@@ -107,6 +114,12 @@ struct PolicyTests {
         model.setAccentDarkness(1, persist: true)
         let maximumDarkness = try store.load().preferences.accentDarkness
         precondition(maximumDarkness == 1)
+        model.updatePreferences { $0.openAppsIconSize = .large; $0.profilesIconSize = .medium }
+        let savedIconSizes = try store.load().preferences
+        precondition(savedIconSizes.openAppsIconSize == .large && savedIconSizes.profilesIconSize == .medium)
+        model.setWindowTransparency(0.65, persist: true)
+        let savedTransparency = try store.load().preferences.windowTransparency
+        precondition(savedTransparency == 0.65)
         model.createProfile()
         guard let created = model.selectedProfileID else { fatalError("Profile was not selected") }
         model.updateProfile(created) { $0.name = "Test Profile" }
@@ -141,8 +154,8 @@ struct PolicyTests {
         model.onSizeChanged = { _ in resizeEvents += 1 }
         model.resizePopover(width: 999, height: 100, persist: true)
         precondition(model.state.preferences.windowWidth == 720)
-        precondition(model.state.preferences.windowHeight == 520)
-        model.resizePopover(width: 719.6, height: 520.2, persist: true)
+        precondition(model.state.preferences.windowHeight == 460)
+        model.resizePopover(width: 719.6, height: 460.2, persist: true)
         precondition(resizeEvents == 1)
         model.resizePopover(width: 600, height: 600, persist: false)
         let beforeResizeSave = try store.load()
@@ -150,6 +163,9 @@ struct PolicyTests {
         model.resizePopover(width: 600, height: 600, persist: true)
         let afterResizeSave = try store.load()
         precondition(afterResizeSave.preferences.windowWidth == 600)
+        model.resizePopover(width: 1, height: 1, persist: true)
+        precondition(model.state.preferences.windowWidth == 380)
+        precondition(model.state.preferences.windowHeight == 460)
         let finalState = try store.load()
         precondition(finalState.profiles.count == 2)
         print("Policy, profile editing, selection, and persistence tests passed")

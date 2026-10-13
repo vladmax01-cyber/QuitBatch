@@ -160,16 +160,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let availableHeight = (NSScreen.main?.visibleFrame.height ?? 760) - 64
         let settingsSize = NSSize(width: 510, height: min(540, max(500, availableHeight)))
         if let settingsWindow {
-            settingsWindow.setContentSize(settingsSize)
             settingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: settingsSize),
-                              styleMask: [.titled, .closable, .miniaturizable],
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = "QuitBatch Settings"
+        window.title = "QuitBatch"
         window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 430, height: 500)
+        window.maxSize = NSSize(width: 720, height: 900)
         window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
         window.setContentSize(settingsSize)
         window.center()

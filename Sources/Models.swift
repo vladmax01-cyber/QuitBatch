@@ -52,6 +52,25 @@ struct Shortcut: Codable, Equatable {
     var label: String
 }
 
+enum IconSizeOption: String, Codable, CaseIterable, Identifiable {
+    case small, medium, large
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var openApp: CGFloat {
+        switch self { case .small: 20; case .medium: 26; case .large: 32 }
+    }
+    var profileApp: CGFloat {
+        switch self { case .small: 18; case .medium: 24; case .large: 30 }
+    }
+    var profileSymbol: CGFloat {
+        switch self { case .small: 32; case .medium: 40; case .large: 48 }
+    }
+    var profileStrip: CGFloat {
+        switch self { case .small: 14; case .medium: 17; case .large: 20 }
+    }
+}
+
 struct Preferences: Codable, Equatable {
     static let defaultAccentDarkness = 0.0
 
@@ -63,17 +82,20 @@ struct Preferences: Codable, Equatable {
     var shortcut: Shortcut? = nil
     var useGlass = true
     var showProfileStrip = true
+    var openAppsIconSize: IconSizeOption = .small
+    var profilesIconSize: IconSizeOption = .small
     var useCustomAccent = false
     var customAccentHue = 0.59
     var accentDarkness = Preferences.defaultAccentDarkness
     var windowTransparency = 0.08
-    var windowWidth = 440.0
-    var windowHeight = 626.0
+    var windowWidth = 400.0
+    var windowHeight = 500.0
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
         case launchAtLogin, confirmBeforeQuitting, forceQuitUnresponsiveApps, appearance, menuBarSymbol, shortcut, useGlass, showProfileStrip,
+             openAppsIconSize, profilesIconSize,
              useCustomAccent, customAccentHue, accentDarkness, windowTransparency,
              windowWidth, windowHeight
     }
@@ -90,12 +112,14 @@ struct Preferences: Codable, Equatable {
         shortcut = try values.decodeIfPresent(Shortcut.self, forKey: .shortcut)
         useGlass = try values.decodeIfPresent(Bool.self, forKey: .useGlass) ?? true
         showProfileStrip = try values.decodeIfPresent(Bool.self, forKey: .showProfileStrip) ?? true
+        openAppsIconSize = (try? values.decode(IconSizeOption.self, forKey: .openAppsIconSize)) ?? .small
+        profilesIconSize = (try? values.decode(IconSizeOption.self, forKey: .profilesIconSize)) ?? .small
         useCustomAccent = try values.decodeIfPresent(Bool.self, forKey: .useCustomAccent) ?? false
         customAccentHue = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .customAccentHue) ?? 0.59))
         accentDarkness = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .accentDarkness) ?? Preferences.defaultAccentDarkness))
         windowTransparency = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .windowTransparency) ?? 0.08))
-        windowWidth = min(720, max(420, try values.decodeIfPresent(Double.self, forKey: .windowWidth) ?? 440))
-        windowHeight = min(900, max(520, try values.decodeIfPresent(Double.self, forKey: .windowHeight) ?? 626))
+        windowWidth = min(720, max(380, try values.decodeIfPresent(Double.self, forKey: .windowWidth) ?? 400))
+        windowHeight = min(900, max(460, try values.decodeIfPresent(Double.self, forKey: .windowHeight) ?? 500))
     }
 }
 
