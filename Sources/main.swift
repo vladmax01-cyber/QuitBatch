@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var hotKey: EventHotKeyRef?
     private var hotKeyHandler: EventHandlerRef?
     private var outsideClickMonitor: Any?
+    private var settingsClickMonitor: Any?
     #if UI_PREVIEW
     private var previewWindow: NSWindow?
     #endif
@@ -158,11 +159,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             DispatchQueue.main.async { self?.popover.performClose(nil) }
         }
+        settingsClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            if let self, self.popover.isShown, event.window === self.settingsWindow {
+                self.popover.performClose(nil)
+            }
+            return event
+        }
     }
 
     func popoverDidClose(_ notification: Notification) {
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        if let settingsClickMonitor { NSEvent.removeMonitor(settingsClickMonitor) }
         outsideClickMonitor = nil
+        settingsClickMonitor = nil
     }
 
     func applicationWillTerminate(_ notification: Notification) {
