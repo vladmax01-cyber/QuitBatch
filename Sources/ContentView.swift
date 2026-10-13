@@ -670,7 +670,7 @@ private struct ProfilesView: View {
                             .disabled(model.eligibleApps.isEmpty || model.busy)
                             .help("Add running apps except Keep Open and protected apps")
                         Button("Deselect All") { model.clearAppsToClose(for: profile.id) }
-                            .disabled(entries.isEmpty || model.busy)
+                            .disabled((entries.isEmpty && !profile.includeNewApps) || model.busy)
                         Spacer()
                     }
                     .font(.caption)
@@ -703,7 +703,8 @@ private struct ProfilesView: View {
                             Image(nsImage: app.icon)
                                 .resizable().frame(width: 24, height: 24)
                             Text(app.name).font(.caption).lineLimit(1)
-                            Text("Auto").font(.caption2).foregroundStyle(.secondary)
+                            Text(decision == .close ? "Auto" : "Not saved")
+                                .font(.caption2).foregroundStyle(.secondary)
                             Spacer()
                             Button {
                                 model.setApp(app.reference,
