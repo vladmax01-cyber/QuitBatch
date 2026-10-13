@@ -1029,6 +1029,7 @@ struct SettingsView: View {
 
 private struct AccentHueSlider: View {
     @Binding var value: Double
+    @FocusState private var isFocused: Bool
     let color: Color
     let onCommit: () -> Void
 
@@ -1050,7 +1051,11 @@ private struct AccentHueSlider: View {
                     .fill(color)
                     .frame(width: thumbSize, height: thumbSize)
                     .overlay(Circle().stroke(.white, lineWidth: 2))
-                    .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+                    .shadow(
+                        color: isFocused ? color.opacity(0.7) : .black.opacity(0.25),
+                        radius: isFocused ? 5 : 2,
+                        y: 1
+                    )
                     .offset(x: travel * value)
             }
             .frame(height: geometry.size.height)
@@ -1063,6 +1068,8 @@ private struct AccentHueSlider: View {
         }
         .frame(height: 24)
         .focusable()
+        .focused($isFocused)
+        .focusEffectDisabled()
         .onKeyPress(.leftArrow) {
             value = max(0, value - 1.0 / 36)
             onCommit()
