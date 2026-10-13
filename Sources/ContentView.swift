@@ -8,28 +8,30 @@ private enum Palette {
 
     static func accent(_ preferences: Preferences) -> Color {
         return Color(nsColor: NSColor(name: nil) { appearance in
-            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            var base = NSColor(calibratedHue: preferences.customAccentHue,
-                               saturation: dark ? 0.75 : 0.8,
-                               brightness: dark ? 1 : 0.95, alpha: 1)
-            if !preferences.useCustomAccent {
-                appearance.performAsCurrentDrawingAppearance {
-                    base = NSColor.controlAccentColor.usingColorSpace(.deviceRGB) ?? NSColor.controlAccentColor
-                }
-            }
-            let rgb = base.usingColorSpace(.deviceRGB) ?? base
-            var hue: CGFloat = 0
-            var saturation: CGFloat = 0
-            var brightness: CGFloat = 0
-            var alpha: CGFloat = 0
-            rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-            let amount = CGFloat(preferences.accentDarkness)
-            let darkestBrightness = min(brightness, dark ? 0.65 : 0.3)
-            return NSColor(calibratedHue: hue,
-                           saturation: saturation,
-                           brightness: brightness + (darkestBrightness - brightness) * amount,
-                           alpha: alpha)
+            resolvedAccent(preferences, appearance: appearance)
         })
+    }
+
+    static func accentForeground(_ preferences: Preferences) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let color = resolvedAccent(preferences, appearance: appearance)
+            return preferences.accentDarkness == 0 ? color :
+                AccentTone.readableForeground(color, darkAppearance: dark)
+        })
+    }
+
+    private static func resolvedAccent(_ preferences: Preferences, appearance: NSAppearance) -> NSColor {
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        var base = NSColor(calibratedHue: preferences.customAccentHue,
+                           saturation: dark ? 0.75 : 0.8,
+                           brightness: dark ? 1 : 0.95, alpha: 1)
+        if !preferences.useCustomAccent {
+            appearance.performAsCurrentDrawingAppearance {
+                base = NSColor.controlAccentColor.usingColorSpace(.deviceRGB) ?? NSColor.controlAccentColor
+            }
+        }
+        return AccentTone.adjusted(base, darkness: preferences.accentDarkness, darkAppearance: dark)
     }
 
     private static func balanced(light: (CGFloat, CGFloat, CGFloat),
@@ -47,6 +49,13 @@ private enum Palette {
         case "purple": balanced(light: (0.44, 0.35, 0.59), dark: (0.70, 0.61, 0.82))
         case "red": balanced(light: (0.62, 0.34, 0.37), dark: (0.84, 0.62, 0.64))
         default: accent(preferences)
+        }
+    }
+
+    static func foregroundColor(_ name: String?, preferences: Preferences) -> Color {
+        switch name {
+        case "teal", "orange", "purple", "red": color(name, preferences: preferences)
+        default: accentForeground(preferences)
         }
     }
 }
@@ -76,7 +85,7 @@ struct ContentView: View {
             }
             if let message = model.message {
                 HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "info.circle").foregroundStyle(Palette.accent(model.state.preferences))
+                    Image(systemName: "info.circle").foregroundStyle(Palette.accentForeground(model.state.preferences))
                     Text(message).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     Button { model.message = nil } label: { Image(systemName: "xmark") }
@@ -152,7 +161,7 @@ struct ContentView: View {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .foregroundStyle(Palette.accent(model.state.preferences))
+                .foregroundStyle(Palette.accentForeground(model.state.preferences))
                 .frame(width: 30, height: 30)
                 .frame(width: 34)
             VStack(alignment: .leading, spacing: 2) {
@@ -385,7 +394,7 @@ private struct ProfilesView: View {
                                     Image(systemName: profile.validSymbol)
                                         .font(.system(size: 17))
                                         .frame(width: 19)
-                                        .foregroundStyle(Palette.color(profile.accent, preferences: model.state.preferences))
+                                        .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                                     Text(profile.name).lineLimit(1)
                                 }
                                 .font(.system(size: 13, weight: model.selectedProfileID == profile.id ? .semibold : .regular))
@@ -476,7 +485,7 @@ private struct ProfilesView: View {
             HStack(spacing: 10) {
                 Image(systemName: profile.validSymbol)
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(Palette.color(profile.accent, preferences: model.state.preferences))
+                    .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                     .frame(width: 40, height: 40)
                     .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13),
                                 in: RoundedRectangle(cornerRadius: 10))
@@ -511,7 +520,7 @@ private struct ProfilesView: View {
             HStack(spacing: 0) {
                 Button { closeExpanded = true } label: {
                     profileActivityLabel("\(runningToClose) to close", symbol: "xmark.circle")
-                        .foregroundStyle(Palette.color(profile.accent, preferences: model.state.preferences))
+                        .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                 }
                 .buttonStyle(.plain)
                 .help("Show the apps this profile will close now")
@@ -565,7 +574,7 @@ private struct ProfilesView: View {
                     HStack(spacing: 7) {
                         Image(systemName: profile.validSymbol)
                             .font(.system(size: 18))
-                            .foregroundStyle(Palette.color(profile.accent, preferences: model.state.preferences))
+                            .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                         Text("Choose")
                         Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
                     }
@@ -615,7 +624,7 @@ private struct ProfilesView: View {
                             Image(systemName: choice.id)
                                 .font(.system(size: 25))
                                 .frame(maxWidth: .infinity, minHeight: 48)
-                            .foregroundStyle(profile.symbol == choice.id ? Palette.color(profile.accent, preferences: model.state.preferences) : Color.primary)
+                            .foregroundStyle(profile.symbol == choice.id ? Palette.foregroundColor(profile.accent, preferences: model.state.preferences) : Color.primary)
                             .background(profile.symbol == choice.id ? Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13) : Color.primary.opacity(0.045),
                                         in: RoundedRectangle(cornerRadius: 8))
                             .contentShape(RoundedRectangle(cornerRadius: 8))
@@ -777,7 +786,7 @@ struct SettingsView: View {
                         .renderingMode(.template)
                         .resizable()
                         .scaledToFit()
-                        .foregroundStyle(Palette.accent(model.state.preferences))
+                        .foregroundStyle(Palette.accentForeground(model.state.preferences))
                         .frame(width: 27, height: 27)
                         .frame(width: 48, height: 48)
                         .background(Palette.accent(model.state.preferences).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -900,6 +909,7 @@ struct SettingsView: View {
                                 if !editing { model.save() }
                             })
                             .accessibilityLabel("Darken accent color")
+                            .help("Deepens the accent while keeping its labels readable")
                             Text("\(Int((model.state.preferences.accentDarkness * 100).rounded()))%")
                                 .font(.caption.monospacedDigit())
                                 .frame(width: 38, alignment: .trailing)
@@ -998,7 +1008,7 @@ struct SettingsView: View {
                             .scaledToFit()
                             .frame(width: 30, height: 30)
                             .frame(maxWidth: .infinity, minHeight: 50)
-                        .foregroundStyle(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent(model.state.preferences) : Color.primary)
+                        .foregroundStyle(model.state.preferences.menuBarSymbol == choice.id ? Palette.accentForeground(model.state.preferences) : Color.primary)
                         .background(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent(model.state.preferences).opacity(0.14) : Color.primary.opacity(0.05),
                                     in: RoundedRectangle(cornerRadius: 10))
                         .contentShape(RoundedRectangle(cornerRadius: 10))
@@ -1018,7 +1028,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: symbol)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Palette.accent(model.state.preferences))
+                .foregroundStyle(Palette.accentForeground(model.state.preferences))
             content()
         }
         .padding(15)
