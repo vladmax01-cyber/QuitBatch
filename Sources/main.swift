@@ -155,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func openSettingsWindow() {
         dismissPopover()
         let availableHeight = (NSScreen.main?.visibleFrame.height ?? 760) - 64
-        let settingsSize = NSSize(width: 510, height: min(680, max(500, availableHeight)))
+        let settingsSize = NSSize(width: 510, height: min(540, max(500, availableHeight)))
         if let settingsWindow {
             settingsWindow.setContentSize(settingsSize)
             settingsWindow.makeKeyAndOrderFront(nil)
@@ -168,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.title = "QuitBatch Settings"
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
+        window.setContentSize(settingsSize)
         window.center()
         settingsWindow = window
         window.makeKeyAndOrderFront(nil)

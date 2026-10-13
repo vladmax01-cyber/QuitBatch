@@ -2,9 +2,9 @@
 
 Quit a group of Mac apps without hunting through the Dock. Pick from what's running, or save a profile for a routine you repeat. QuitBatch lives in the menu bar and sends ordinary macOS quit requests, so apps can still ask you to save your work.
 
-![QuitBatch on an illustrative desktop](Assets/Screenshots/desktop-mockup.png)
+<img src="Assets/Screenshots/desktop-mockup.jpg" alt="QuitBatch on an illustrative desktop" width="900">
 
-*Desktop mockup with a real QuitBatch preview. The “Focus Session” profile was made for these screenshots.*
+*Illustrative desktop with a real QuitBatch demo interface. The screenshots use a sample “Focus Session” profile and common macOS apps, with no personal app list or documents.*
 
 ## What you can do
 
@@ -12,7 +12,7 @@ Quit a group of Mac apps without hunting through the Dock. Pick from what's runn
 
 Open **Open Apps**, search by app name, and tick the apps you want to quit. **Select All** and **Deselect All** work on the current search results. QuitBatch shows running instances and distinct apps separately. Protected apps, including Finder, QuitBatch itself, and LockDown Browser, cannot be selected.
 
-![Open Apps with multiple apps selected](Assets/Screenshots/open-apps.png)
+<img src="Assets/Screenshots/open-apps.png" alt="Open Apps with common macOS apps and two selected" width="620">
 
 ### Save a routine
 
@@ -20,7 +20,7 @@ Profiles have two lists: **Close** and **Keep Open**. Add apps from the running 
 
 Turn on **Include newly detected apps** if anything you haven't listed under Keep Open should also close. You can show or hide the profile list when you have more than one profile. The included **Exam Mode** is an editable example, not a preset you have to use.
 
-![A sample profile with Close and Keep Open sections](Assets/Screenshots/profiles.png)
+<img src="Assets/Screenshots/profiles.png" alt="Sample profile with Close and Keep Open sections" width="620">
 
 ### Reach it from the menu bar
 
@@ -30,7 +30,7 @@ Click the menu bar symbol to open or close the panel. Clicking outside also dism
 
 Settings has system, light, and dark appearance; a choice of menu bar symbols; and a custom accent hue. **Darken color** adjusts the accent from 0 to 100% without dimming the window background. You can also change the glass transparency, show or hide the profile list, launch at login, require confirmation before quitting apps, and quit QuitBatch itself. The Settings window keeps a consistent size and scrolls when space is limited.
 
-![Appearance and general settings](Assets/Screenshots/settings.png)
+<img src="Assets/Screenshots/settings.png" alt="Appearance and general settings with the system blue accent" width="600">
 
 ## Before you use a profile
 
