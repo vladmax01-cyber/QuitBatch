@@ -329,6 +329,11 @@ final class AppModel: ObservableObject {
         if persist { save() }
     }
 
+    func setAccentDarkness(_ darkness: Double, persist: Bool) {
+        state.preferences.accentDarkness = min(0.35, max(0, darkness))
+        if persist { save() }
+    }
+
     func resizePopover(width: Double, height: Double, persist: Bool) {
         let newWidth = min(720, max(420, width.rounded()))
         let newHeight = min(900, max(520, height.rounded()))

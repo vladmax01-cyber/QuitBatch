@@ -7,14 +7,21 @@ private enum Palette {
     static let muted = Color.secondary
 
     static func accent(_ preferences: Preferences) -> Color {
-        guard preferences.useCustomAccent else {
-            return balanced(light: (0.20, 0.38, 0.62), dark: (0.52, 0.68, 0.84))
-        }
         return Color(nsColor: NSColor(name: nil) { appearance in
             let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return NSColor(calibratedHue: preferences.customAccentHue,
-                           saturation: dark ? 0.42 : 0.58,
-                           brightness: dark ? 0.84 : 0.65, alpha: 1)
+            let base = preferences.useCustomAccent
+                ? NSColor(calibratedHue: preferences.customAccentHue,
+                          saturation: dark ? 0.42 : 0.58,
+                          brightness: dark ? 0.84 : 0.65, alpha: 1)
+                : NSColor.systemBlue
+            let rgb = base.usingColorSpace(.deviceRGB) ?? base
+            var hue: CGFloat = 0
+            var saturation: CGFloat = 0
+            var brightness: CGFloat = 0
+            var alpha: CGFloat = 0
+            rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+            return NSColor(calibratedHue: hue, saturation: saturation,
+                           brightness: brightness * (1 - preferences.accentDarkness), alpha: alpha)
         })
     }
 
@@ -772,15 +779,34 @@ struct SettingsView: View {
                                     .fill(Palette.accent(model.state.preferences))
                                     .frame(width: 17, height: 17)
                                 Button("Default") {
-                                    model.updatePreferences { $0.useCustomAccent = false }
+                                    model.updatePreferences {
+                                        $0.useCustomAccent = false
+                                        $0.accentDarkness = 0.08
+                                    }
                                 }
                                 .controlSize(.small)
-                                .disabled(!model.state.preferences.useCustomAccent)
+                                .disabled(!model.state.preferences.useCustomAccent &&
+                                          model.state.preferences.accentDarkness == 0.08)
                             }
                             AccentHueSlider(value: Binding(
                                 get: { model.state.preferences.customAccentHue },
                                 set: { model.setAccentHue($0, persist: false) }
                             ), onCommit: { model.save() })
+                        }
+
+                        HStack(spacing: 10) {
+                            Text("Darken color").font(.subheadline)
+                                .frame(width: 88, alignment: .leading)
+                            Slider(value: Binding(
+                                get: { model.state.preferences.accentDarkness },
+                                set: { model.setAccentDarkness($0, persist: false) }
+                            ), in: 0...0.35, onEditingChanged: { editing in
+                                if !editing { model.save() }
+                            })
+                            .accessibilityLabel("Darken accent color")
+                            Text("\(Int((model.state.preferences.accentDarkness * 100).rounded()))%")
+                                .font(.caption.monospacedDigit())
+                                .frame(width: 38, alignment: .trailing)
                         }
 
                         Toggle("Use Liquid Glass", isOn: Binding(

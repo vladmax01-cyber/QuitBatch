@@ -14,9 +14,11 @@ struct PolicyTests {
         precondition(migrated.useGlass && migrated.windowTransparency == 0.08)
         precondition(migrated.showProfileStrip)
         precondition(!migrated.useCustomAccent && migrated.customAccentHue == 0.59)
+        precondition(migrated.accentDarkness == 0.08)
         let customAccent = try JSONDecoder().decode(Preferences.self,
-            from: Data(#"{"useCustomAccent":true,"customAccentHue":1.5}"#.utf8))
-        precondition(customAccent.useCustomAccent && customAccent.customAccentHue == 1)
+            from: Data(#"{"useCustomAccent":true,"customAccentHue":1.5,"accentDarkness":0.8}"#.utf8))
+        precondition(customAccent.useCustomAccent && customAccent.customAccentHue == 1 &&
+                     customAccent.accentDarkness == 0.35)
         precondition(migrated.windowWidth == 440 && migrated.windowHeight == 626)
         precondition(migrated.menuBarSymbol == "appcloser")
         precondition(Set(SymbolCatalog.profileChoices.map(\.id)).count == SymbolCatalog.profileChoices.count)
@@ -57,6 +59,9 @@ struct PolicyTests {
         model.setAccentHue(0.74, persist: true)
         let savedAccent = try store.load().preferences
         precondition(savedAccent.useCustomAccent && savedAccent.customAccentHue == 0.74)
+        model.setAccentDarkness(0.2, persist: true)
+        let savedDarkness = try store.load().preferences.accentDarkness
+        precondition(savedDarkness == 0.2)
         model.createProfile()
         guard let created = model.selectedProfileID else { fatalError("Profile was not selected") }
         model.updateProfile(created) { $0.name = "Test Profile" }
