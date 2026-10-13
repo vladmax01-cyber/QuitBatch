@@ -30,10 +30,20 @@ struct PolicyTests {
         precondition(abs(graphite.redComponent - graphite.blueComponent) < 0.02)
         for hue in stride(from: 0.0, through: 0.8, by: 0.2) {
             let base = NSColor(calibratedHue: hue, saturation: 0.8, brightness: 1, alpha: 1)
-            let tinted = AccentTone.adjusted(base, darkness: 1, darkAppearance: true)
-            let foreground = AccentTone.readableForeground(tinted, darkAppearance: true)
-            precondition(AccentTone.contrast(tinted, against: darkBackground) >= 2.99)
-            precondition(AccentTone.contrast(foreground, against: darkBackground) >= 4.49)
+            for (dark, background) in [(false, lightBackground), (true, darkBackground)] {
+                let starting = AccentTone.contrast(base, against: background)
+                let ending = dark ? min(starting, 3) : max(starting, 9)
+                for amount in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                    let tinted = AccentTone.adjusted(base, darkness: amount, darkAppearance: dark)
+                    let actual = AccentTone.contrast(tinted, against: background)
+                    let expected = starting + (ending - starting) * amount
+                    precondition(abs(actual - expected) < 0.03)
+                    let foreground = AccentTone.readableForeground(tinted, darkAppearance: dark)
+                    precondition(AccentTone.contrast(foreground, against: background) >= 4.49)
+                    precondition(AccentTone.contrast(AccentTone.textOnFill(tinted),
+                                                      against: tinted) >= 3.99)
+                }
+            }
         }
         precondition(migrated.windowWidth == 440 && migrated.windowHeight == 626)
         precondition(migrated.menuBarSymbol == "appcloser")
