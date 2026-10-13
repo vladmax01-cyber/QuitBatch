@@ -132,7 +132,7 @@ struct ContentView: View {
                 .fill(Color.primary.opacity(0.001))
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
-                .accessibilityLabel("Resize App Closer")
+                .accessibilityLabel("Resize QuitBatch")
                 .gesture(DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
                         let mouse = NSEvent.mouseLocation
@@ -190,7 +190,7 @@ struct ContentView: View {
                 .frame(width: 30, height: 30)
                 .frame(width: 34)
             VStack(alignment: .leading, spacing: 2) {
-                Text("App Closer").font(.system(size: 18, weight: .semibold))
+                Text("QuitBatch").font(.system(size: 18, weight: .semibold))
                 Text("Manage running apps and saved profiles")
                     .font(.caption).foregroundStyle(Palette.muted)
             }
@@ -205,8 +205,8 @@ struct ContentView: View {
                 .accessibilityLabel("Open Settings")
             Button(action: closePanel) { Image(systemName: "xmark").font(.system(size: 17)) }
                 .buttonStyle(.borderless)
-                .help("Close App Closer panel")
-                .accessibilityLabel("Close App Closer panel")
+                .help("Close QuitBatch panel")
+                .accessibilityLabel("Close QuitBatch panel")
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)
@@ -464,7 +464,7 @@ private struct ProfilesView: View {
                             profileToggle("Include newly detected apps", value: profile.includeNewApps, id: profile.id) { $0.includeNewApps = $1 }
                             Text("Closes running apps not listed above as Keep Open. Protected apps are never closed.")
                                 .font(.caption2).foregroundStyle(.secondary)
-                            profileToggle("Quit App Closer after running", value: profile.quitAfterRunning, id: profile.id) { $0.quitAfterRunning = $1 }
+                            profileToggle("Quit QuitBatch after running", value: profile.quitAfterRunning, id: profile.id) { $0.quitAfterRunning = $1 }
                             profileToggle("Offer workspace restoration after reopening", value: profile.restoreAfterReopening, id: profile.id) { $0.restoreAfterReopening = $1 }
                         }
                         .font(.caption)
@@ -569,7 +569,7 @@ private struct ProfilesView: View {
                 Divider().frame(height: 18)
                 profileActivityLabel("\(protectedCount) protected", symbol: "lock.shield")
                     .foregroundStyle(.secondary)
-                    .help("Protected apps cannot be closed by App Closer")
+                    .help("Protected apps cannot be closed by QuitBatch")
             }
             .padding(.vertical, 2)
             .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.055),
@@ -642,7 +642,7 @@ private struct ProfilesView: View {
                 .frame(width: 125)
             }
             if NSImage(systemSymbolName: profile.symbol, accessibilityDescription: nil) == nil {
-                Text("Symbol not found. App Closer will show its default icon.")
+                Text("Symbol not found. QuitBatch will show its default icon.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -871,7 +871,7 @@ struct SettingsView: View {
                             set: { value in model.updatePreferences { $0.confirmBeforeQuitting = value } }
                         ))
                         Button { NSApp.terminate(nil) } label: {
-                            Label("Quit App Closer", systemImage: "power")
+                            Label("Quit QuitBatch", systemImage: "power")
                         }
                         .buttonStyle(.bordered)
                     }

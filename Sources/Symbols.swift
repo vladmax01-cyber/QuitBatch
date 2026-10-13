@@ -34,7 +34,7 @@ enum SymbolCatalog {
     ]
 
     static let menuBarChoices: [SymbolChoice] = [
-        .init(id: "appcloser", title: "App Closer"),
+        .init(id: "appcloser", title: "QuitBatch"),
         .init(id: "xmark.app", title: "Quit"),
         .init(id: "square.stack.3d.up", title: "Stack"),
         .init(id: "macwindow.on.rectangle", title: "Windows"),
@@ -51,7 +51,7 @@ enum SymbolCatalog {
     static func menuBarImage(for choice: String) -> NSImage {
         guard choice != "appcloser",
               menuBarChoices.contains(where: { $0.id == choice }),
-              let image = NSImage(systemSymbolName: choice, accessibilityDescription: "App Closer") else {
+              let image = NSImage(systemSymbolName: choice, accessibilityDescription: "QuitBatch") else {
             return customMenuBarImage()
         }
         let configured = image.withSymbolConfiguration(.init(pointSize: 18, weight: .medium)) ?? image
@@ -87,7 +87,7 @@ enum SymbolCatalog {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "App Closer"
+        image.accessibilityDescription = "QuitBatch"
         return image
     }
 }

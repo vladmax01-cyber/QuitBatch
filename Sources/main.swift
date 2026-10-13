@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.setActivationPolicy(.accessory)
         guard let button = statusItem.button else { return }
         button.image = SymbolCatalog.menuBarImage(for: model.state.preferences.menuBarSymbol)
-        button.toolTip = "App Closer · Option-click for profiles"
+        button.toolTip = "QuitBatch · Option-click for profiles"
         button.target = self
         button.action = #selector(statusClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -59,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                                                   width: model.state.preferences.windowWidth,
                                                   height: model.state.preferences.windowHeight),
                               styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = "App Closer Preview"
+        window.title = "QuitBatch Preview"
         window.contentViewController = NSHostingController(rootView: ContentView(model: model) { [weak self] in
             self?.openSettingsWindow()
         } closePanel: { [weak self] in
@@ -95,7 +95,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showPopover(relativeTo button: NSStatusBarButton) {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
+        if let window = popover.contentViewController?.view.window {
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                window.alphaValue = 1
+            } else {
+                window.alphaValue = 0.72
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.14
+                    window.animator().alphaValue = 1
+                }
+            }
+            window.makeKey()
+        }
         NSApp.activate(ignoringOtherApps: true)
         monitorOutsideClicks()
     }
@@ -103,7 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func showQuickActions() {
         guard let button = statusItem.button else { return }
         dismissPopover()
-        let menu = NSMenu(title: "App Closer Profiles")
+        let menu = NSMenu(title: "QuitBatch Profiles")
         if model.state.profiles.isEmpty {
             let empty = NSMenuItem(title: "No saved profiles", action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -119,13 +130,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let open = NSMenuItem(title: "Open App Closer", action: #selector(openMain), keyEquivalent: "")
+        let open = NSMenuItem(title: "Open QuitBatch", action: #selector(openMain), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
         let settings = NSMenuItem(title: "Settings", action: #selector(openSettingsWindow), keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
-        let quit = NSMenuItem(title: "Quit App Closer", action: #selector(quitUtility), keyEquivalent: "")
+        let quit = NSMenuItem(title: "Quit QuitBatch", action: #selector(quitUtility), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height), in: button)
@@ -151,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 490, height: 640),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = "App Closer Settings"
+        window.title = "QuitBatch Settings"
         window.minSize = NSSize(width: 430, height: 500)
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
