@@ -24,8 +24,10 @@ final class AppModel: ObservableObject {
     @Published var selectedProfileID: UUID?
     @Published var busy = false
     @Published var phase = ""
+    @Published private(set) var usageByPID: [pid_t: ResourceUsage] = [:]
     @Published var resultByPID: [pid_t: String] = [:]
-    @Published var lastResults: [(name: String, status: String)] = []
+    @Published var lastResults: [(pid: pid_t, name: String, status: String)] = []
+    @Published private(set) var pendingForceQuitCount = 0
     @Published var message: String?
     @Published var section: Section = .openApps
 
@@ -44,6 +46,11 @@ final class AppModel: ObservableObject {
     private let store: StateStore
     private var observers: [NSObjectProtocol] = []
     private var timer: Timer?
+    private var resourceTimer: Timer?
+    private var resourceUpdatesPaused = false
+    private var resourceSnapshots: [pid_t: ProcessResourceSnapshot] = [:]
+    private var pendingForceQuitTargets: [RunningApp] = []
+    private var pendingForceQuitProfile: AppProfile?
     var onShortcutChanged: ((Shortcut?) -> Void)?
     var onSizeChanged: ((CGSize) -> Void)?
     var onMenuBarSymbolChanged: ((String) -> Void)?
@@ -73,6 +80,7 @@ final class AppModel: ObservableObject {
     deinit {
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         timer?.invalidate()
+        resourceTimer?.invalidate()
     }
 
     var eligibleApps: [RunningApp] { apps.filter { !$0.protected } }
@@ -96,6 +104,53 @@ final class AppModel: ObservableObject {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         let active = Set(apps.map(\.id))
         selectedPIDs.formIntersection(active)
+        if !pendingForceQuitTargets.isEmpty {
+            let alreadyClosed = pendingForceQuitTargets.filter { $0.application.isTerminated }
+            for target in alreadyClosed { resultByPID[target.id] = "Closed" }
+            pendingForceQuitTargets.removeAll { $0.application.isTerminated }
+            pendingForceQuitCount = pendingForceQuitTargets.count
+            if !alreadyClosed.isEmpty {
+                lastResults = lastResults.map { ($0.pid, $0.name, resultByPID[$0.pid] ?? $0.status) }
+            }
+        }
+        if resourceTimer != nil { refreshResources() }
+    }
+
+    func setPanelVisible(_ visible: Bool) {
+        if visible {
+            guard resourceTimer == nil else { return }
+            refresh()
+            refreshResources()
+            resourceTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, !self.resourceUpdatesPaused else { return }
+                    self.refreshResources()
+                }
+            }
+        } else {
+            resourceTimer?.invalidate()
+            resourceTimer = nil
+            resourceUpdatesPaused = false
+            resourceSnapshots.removeAll()
+        }
+    }
+
+    func setResourceUpdatesPaused(_ paused: Bool) {
+        resourceUpdatesPaused = paused
+        if !paused && resourceTimer != nil { refreshResources() }
+    }
+
+    private func refreshResources() {
+        let time = ProcessInfo.processInfo.systemUptime
+        var nextSnapshots: [pid_t: ProcessResourceSnapshot] = [:]
+        var nextUsage: [pid_t: ResourceUsage] = [:]
+        for app in apps {
+            guard let snapshot = ResourceSampler.read(pid: app.id, at: time) else { continue }
+            nextUsage[app.id] = ResourceSampler.usage(current: snapshot, previous: resourceSnapshots[app.id])
+            nextSnapshots[app.id] = snapshot
+        }
+        resourceSnapshots = nextSnapshots
+        if nextUsage != usageByPID { usageByPID = nextUsage }
     }
 
     func selectAll() { selectedPIDs = Set(eligibleApps.map(\.id)) }
@@ -228,52 +283,121 @@ final class AppModel: ObservableObject {
 
     private func quit(_ targets: [RunningApp], profile: AppProfile?) async {
         busy = true
+        let automaticForceQuit = state.preferences.forceQuitUnresponsiveApps
         resultByPID = [:]
         lastResults = []
         message = nil
-        var closed: [AppReference] = []
-        var failed = 0
+        pendingForceQuitTargets = []
+        pendingForceQuitProfile = nil
+        pendingForceQuitCount = 0
         let ordered = targets.sorted { a, b in
             let aHammer = a.application.bundleIdentifier?.localizedCaseInsensitiveContains("hammerspoon") == true
             let bHammer = b.application.bundleIdentifier?.localizedCaseInsensitiveContains("hammerspoon") == true
-            return !aHammer && bHammer
+            return aHammer == bHammer ? a.name.localizedStandardCompare(b.name) == .orderedAscending : !aHammer
         }
-        for (index, target) in ordered.enumerated() {
+        phase = "Asking \(ordered.count) apps to quit…"
+        var active: [RunningApp] = []
+        for target in ordered {
             let app = target.application
             if app.isTerminated { resultByPID[target.id] = "Already closed"; continue }
-            phase = "Quitting \(index + 1) of \(ordered.count): \(target.name)"
+            guard !target.protected else { resultByPID[target.id] = "Protected"; continue }
             resultByPID[target.id] = "Quitting…"
-            if !app.terminate() {
-                resultByPID[target.id] = "Needs manual close"
-                failed += 1
-                continue
+            _ = app.terminate()
+            active.append(target)
+        }
+        phase = "Waiting for apps to close…"
+        await waitForExit(of: active, seconds: 4)
+        let remaining = active.filter { !$0.application.isTerminated }
+        var forceAttempted: Set<pid_t> = []
+        if automaticForceQuit && !remaining.isEmpty {
+            phase = "Force quitting \(remaining.count) apps…"
+            for target in remaining where !target.protected && !target.application.isTerminated {
+                forceAttempted.insert(target.id)
+                _ = target.application.forceTerminate()
             }
-            for _ in 0..<24 {
-                if app.isTerminated { break }
-                try? await Task.sleep(for: .milliseconds(250))
-            }
-            if app.isTerminated {
-                resultByPID[target.id] = "Closed"
-                closed.append(target.reference)
+            await waitForExit(of: remaining, seconds: 3)
+        }
+        let closed = ordered.filter { $0.application.isTerminated }
+        let stillRunning = ordered.filter { !$0.application.isTerminated && !$0.protected }
+        for target in ordered where resultByPID[target.id] != "Protected" {
+            if target.application.isTerminated {
+                resultByPID[target.id] = forceAttempted.contains(target.id) ? "Force quit" : "Closed"
             } else {
-                resultByPID[target.id] = "Needs manual close"
-                failed += 1
+                resultByPID[target.id] = "Still running"
             }
         }
-        if profile?.restoreAfterReopening == true {
-            for app in closed where app.path != nil && !state.restorableApps.contains(where: { $0.id == app.id }) {
-                state.restorableApps.append(app)
-            }
-            save()
-        }
+        saveRestorable(closed, for: profile)
         refresh()
-        selectedPIDs.subtract(closed.compactMap { ref in targets.first(where: { $0.reference.id == ref.id })?.id })
+        selectedPIDs.subtract(closed.map(\.id))
+        pendingForceQuitTargets = stillRunning
+        pendingForceQuitProfile = profile
+        pendingForceQuitCount = stillRunning.count
         phase = ""
         busy = false
-        lastResults = ordered.map { ($0.name, resultByPID[$0.id] ?? "Unknown") }
-        message = failed == 0 ? "Closed \(closed.count) selected app\(closed.count == 1 ? "" : "s")." :
-            "Closed \(closed.count). \(failed) app\(failed == 1 ? "" : "s") need manual attention."
-        if failed == 0 && profile?.quitAfterRunning == true { NSApp.terminate(nil) }
+        lastResults = ordered.map { ($0.id, $0.name, resultByPID[$0.id] ?? "Unknown") }
+        message = stillRunning.isEmpty ? "Closed \(closed.count) app\(closed.count == 1 ? "" : "s")." :
+            "Closed \(closed.count). \(stillRunning.count) still running."
+        if stillRunning.isEmpty && profile?.quitAfterRunning == true { NSApp.terminate(nil) }
+    }
+
+    func forceQuitRemaining() {
+        guard !busy else { return }
+        let targets = pendingForceQuitTargets.filter { !$0.application.isTerminated && !$0.protected }
+        guard !targets.isEmpty else {
+            pendingForceQuitTargets = []
+            pendingForceQuitCount = 0
+            message = "Those apps have already closed."
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Force quit \(targets.count) app\(targets.count == 1 ? "" : "s")?"
+        alert.informativeText = "Only apps from the last QuitBatch run that are still open will be forced to close. Unsaved changes may be lost."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Force Quit")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { await forceQuit(targets, profile: pendingForceQuitProfile) }
+    }
+
+    private func forceQuit(_ targets: [RunningApp], profile: AppProfile?) async {
+        busy = true
+        phase = "Force quitting \(targets.count) apps…"
+        for target in targets where !target.application.isTerminated && !target.protected {
+            _ = target.application.forceTerminate()
+        }
+        await waitForExit(of: targets, seconds: 3)
+        let closed = targets.filter { $0.application.isTerminated }
+        let stillRunning = targets.filter { !$0.application.isTerminated && !$0.protected }
+        for target in targets {
+            resultByPID[target.id] = target.application.isTerminated ? "Force quit" : "Still running"
+        }
+        saveRestorable(closed, for: profile)
+        refresh()
+        selectedPIDs.subtract(closed.map(\.id))
+        pendingForceQuitTargets = stillRunning
+        pendingForceQuitCount = stillRunning.count
+        lastResults = lastResults.map { ($0.pid, $0.name, resultByPID[$0.pid] ?? $0.status) }
+        phase = ""
+        busy = false
+        message = stillRunning.isEmpty ? "Force quit \(closed.count) app\(closed.count == 1 ? "" : "s")." :
+            "Force quit \(closed.count). \(stillRunning.count) could not be closed."
+        if stillRunning.isEmpty && profile?.quitAfterRunning == true { NSApp.terminate(nil) }
+    }
+
+    private func waitForExit(of targets: [RunningApp], seconds: TimeInterval) async {
+        let deadline = ProcessInfo.processInfo.systemUptime + seconds
+        while targets.contains(where: { !$0.application.isTerminated }) && ProcessInfo.processInfo.systemUptime < deadline {
+            try? await Task.sleep(for: .milliseconds(150))
+        }
+    }
+
+    private func saveRestorable(_ closed: [RunningApp], for profile: AppProfile?) {
+        guard profile?.restoreAfterReopening == true else { return }
+        for target in closed where target.reference.path != nil &&
+            !state.restorableApps.contains(where: { $0.id == target.reference.id }) {
+            state.restorableApps.append(target.reference)
+        }
+        save()
     }
 
     func reveal(_ app: RunningApp) {

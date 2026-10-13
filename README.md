@@ -1,6 +1,6 @@
 # QuitBatch
 
-Quit a group of Mac apps without hunting through the Dock. Pick from what's running, or save a profile for a routine you repeat. QuitBatch lives in the menu bar and sends ordinary macOS quit requests, so apps can still ask you to save your work.
+Quit a group of Mac apps without hunting through the Dock. Pick from what's running, or save a profile for a routine you repeat. QuitBatch lives in the menu bar and first asks apps to quit normally.
 
 <img src="Assets/Screenshots/desktop-mockup.jpg" alt="QuitBatch on an illustrative desktop" width="900">
 
@@ -10,7 +10,7 @@ Quit a group of Mac apps without hunting through the Dock. Pick from what's runn
 
 ### Close what's open
 
-Open **Open Apps**, search by app name, and tick the apps you want to quit. **Select All** and **Deselect All** work on the current search results. QuitBatch shows running instances and distinct apps separately. Protected apps, including Finder, QuitBatch itself, and LockDown Browser, cannot be selected.
+Open **Open Apps**, search by app name, and tick the apps you want to quit. Sort the list by name, recent CPU use, or memory footprint to find busy apps quickly. **Select All** and **Deselect All** work on the current search results. QuitBatch shows running instances and distinct apps separately. Protected apps, including Finder, QuitBatch itself, and LockDown Browser, cannot be selected.
 
 <img src="Assets/Screenshots/open-apps.png" alt="Open Apps with common macOS apps and two selected" width="620">
 
@@ -34,7 +34,7 @@ Settings has system, light, and dark appearance; a choice of menu bar symbols; a
 
 ## Before you use a profile
 
-QuitBatch never force quits an app. If an app has unsaved work, its own save dialog can still appear. Optional workspace restoration remembers app bundles that actually quit and offers to reopen them later. It does not restore unsaved documents or exact window positions.
+QuitBatch gives apps four seconds to respond to a normal quit request. If some remain, the result panel offers **Force Quit Remaining** with a confirmation. Settings also has **Force quit apps that stay open** for automatic escalation. Force quitting can discard unsaved changes. Protected apps and apps marked Keep Open in a profile are excluded from both stages. macOS may still prevent some processes from closing or restart them automatically. Optional workspace restoration remembers app bundles that actually quit and offers to reopen them later; it does not restore unsaved documents or exact window positions.
 
 ## Build
 

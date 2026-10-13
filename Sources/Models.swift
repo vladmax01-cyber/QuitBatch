@@ -57,6 +57,7 @@ struct Preferences: Codable, Equatable {
 
     var launchAtLogin = false
     var confirmBeforeQuitting = false
+    var forceQuitUnresponsiveApps = false
     var appearance = "system"
     var menuBarSymbol = "appcloser"
     var shortcut: Shortcut? = nil
@@ -72,7 +73,7 @@ struct Preferences: Codable, Equatable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case launchAtLogin, confirmBeforeQuitting, appearance, menuBarSymbol, shortcut, useGlass, showProfileStrip,
+        case launchAtLogin, confirmBeforeQuitting, forceQuitUnresponsiveApps, appearance, menuBarSymbol, shortcut, useGlass, showProfileStrip,
              useCustomAccent, customAccentHue, accentDarkness, windowTransparency,
              windowWidth, windowHeight
     }
@@ -81,6 +82,7 @@ struct Preferences: Codable, Equatable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         launchAtLogin = try values.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         confirmBeforeQuitting = try values.decodeIfPresent(Bool.self, forKey: .confirmBeforeQuitting) ?? false
+        forceQuitUnresponsiveApps = try values.decodeIfPresent(Bool.self, forKey: .forceQuitUnresponsiveApps) ?? false
         appearance = try values.decodeIfPresent(String.self, forKey: .appearance) ?? "system"
         let savedSymbol = try values.decodeIfPresent(String.self, forKey: .menuBarSymbol) ?? "appcloser"
         menuBarSymbol = SymbolCatalog.menuBarChoices.contains(where: { $0.id == savedSymbol })

@@ -108,13 +108,27 @@ struct ContentView: View {
                                              keepExpanded: $keepExpanded)
                 }
             }
-            if let message = model.message {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "info.circle").foregroundStyle(Palette.accentForeground(model.state.preferences))
-                    Text(message).fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    Button { model.message = nil } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain).accessibilityLabel("Dismiss message")
+            if model.message != nil || model.pendingForceQuitCount > 0 {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let message = model.message {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "info.circle").foregroundStyle(Palette.accentForeground(model.state.preferences))
+                            Text(message).fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                            Button { model.message = nil } label: { Image(systemName: "xmark") }
+                                .buttonStyle(.plain).accessibilityLabel("Dismiss message")
+                        }
+                    }
+                    if model.pendingForceQuitCount > 0 {
+                        Button { model.forceQuitRemaining() } label: {
+                            Label("Force Quit \(model.pendingForceQuitCount) Remaining", systemImage: "exclamationmark.triangle")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(.red)
+                        .disabled(model.busy)
+                        .help("Force quit apps from the last run that are still open. Unsaved changes may be lost.")
+                    }
                 }
                 .font(.caption)
                 .padding(12)
@@ -245,10 +259,44 @@ private struct OpenAppsView: View {
     @ObservedObject var model: AppModel
     @State private var showResults = false
     @State private var searchText = ""
+    @State private var sortMode: SortMode = .name
+
+    private enum SortMode: String, CaseIterable, Identifiable {
+        case name = "Name", cpu = "CPU", memory = "Memory"
+        var id: String { rawValue }
+    }
 
     private var visibleApps: [RunningApp] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return query.isEmpty ? model.apps : model.apps.filter { $0.name.localizedStandardContains(query) }
+        let filtered = query.isEmpty ? model.apps : model.apps.filter { $0.name.localizedStandardContains(query) }
+        return filtered.sorted { lhs, rhs in
+            let comparison = lhs.name.localizedStandardCompare(rhs.name)
+            let nameFirst = comparison == .orderedSame ? lhs.id < rhs.id : comparison == .orderedAscending
+            switch sortMode {
+            case .name: return nameFirst
+            case .cpu:
+                let left = model.usageByPID[lhs.id]?.cpuPercent ?? -1
+                let right = model.usageByPID[rhs.id]?.cpuPercent ?? -1
+                return left == right ? nameFirst : left > right
+            case .memory:
+                let left = model.usageByPID[lhs.id]?.memoryBytes ?? 0
+                let right = model.usageByPID[rhs.id]?.memoryBytes ?? 0
+                return left == right ? nameFirst : left > right
+            }
+        }
+    }
+
+    private func usageLabel(for app: RunningApp) -> String {
+        guard let usage = model.usageByPID[app.id] else { return "Usage unavailable" }
+        switch sortMode {
+        case .name: return ""
+        case .cpu:
+            guard let cpu = usage.cpuPercent else { return "Measuring CPU…" }
+            return String(format: "%.1f%% CPU", cpu)
+        case .memory:
+            guard let bytes = usage.memoryBytes else { return "Memory unavailable" }
+            return ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .memory)
+        }
     }
 
     private var visibleSelectedCount: Int {
@@ -290,6 +338,18 @@ private struct OpenAppsView: View {
             .padding(.vertical, 7)
             .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 9))
             .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+
+            HStack(spacing: 10) {
+                Text("Sort by").font(.caption).foregroundStyle(.secondary)
+                Picker("Sort running apps", selection: $sortMode) {
+                    ForEach(SortMode.allCases) { mode in Text(mode.rawValue).tag(mode) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .help("CPU shows recent processor use; Memory shows each process's memory footprint.")
+            }
+            .padding(.horizontal, 20)
             .padding(.bottom, 10)
 
             ScrollView {
@@ -304,14 +364,21 @@ private struct OpenAppsView: View {
                                     Image(nsImage: app.icon)
                                         .resizable().interpolation(.high)
                                         .frame(width: 30, height: 30)
-                                    Text(app.name)
-                                        .lineLimit(1)
-                                        .font(.system(size: 13, weight: .medium))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(app.name)
+                                            .lineLimit(1)
+                                            .font(.system(size: 13, weight: .medium))
+                                        if sortMode != .name {
+                                            Text(usageLabel(for: app))
+                                                .font(.caption2.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
                                     Spacer(minLength: 8)
                                     if app.protected {
                                         Text("Protected").foregroundStyle(.secondary)
                                     } else if let result = model.resultByPID[app.id] {
-                                        Text(result).foregroundStyle(result == "Needs manual close" ? .orange : .secondary)
+                                        Text(result).foregroundStyle(result == "Still running" ? .orange : .secondary)
                                     }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -319,7 +386,7 @@ private struct OpenAppsView: View {
                             }
                             .toggleStyle(.checkbox)
                             .disabled(app.protected || model.busy)
-                            if model.resultByPID[app.id] == "Needs manual close" {
+                            if model.resultByPID[app.id] == "Still running" {
                                 Button { model.reveal(app) } label: { Image(systemName: "arrow.up.forward.app") }
                                     .buttonStyle(.borderless)
                                     .help("Bring \(app.name) forward to close it manually")
@@ -334,6 +401,7 @@ private struct OpenAppsView: View {
                 }
                 .padding(.horizontal, 16)
             }
+            .onHover { model.setResourceUpdatesPaused($0) }
             .overlay {
                 if model.apps.isEmpty {
                     ContentUnavailableView("No user apps found", systemImage: "app.dashed",
@@ -352,7 +420,7 @@ private struct OpenAppsView: View {
                                 HStack {
                                     Text(entry.name).lineLimit(1)
                                     Spacer()
-                                    Text(entry.status).foregroundStyle(entry.status == "Needs manual close" ? .orange : .secondary)
+                                    Text(entry.status).foregroundStyle(entry.status == "Still running" ? .orange : .secondary)
                                 }
                             }
                         }
@@ -870,6 +938,12 @@ struct SettingsView: View {
                             get: { model.state.preferences.confirmBeforeQuitting },
                             set: { value in model.updatePreferences { $0.confirmBeforeQuitting = value } }
                         ))
+                        Toggle("Force quit apps that stay open", isOn: Binding(
+                            get: { model.state.preferences.forceQuitUnresponsiveApps },
+                            set: { value in model.updatePreferences { $0.forceQuitUnresponsiveApps = value } }
+                        ))
+                        Text("After a normal quit attempt, force quitting can discard unsaved changes.")
+                            .font(.caption).foregroundStyle(.secondary)
                         Button { NSApp.terminate(nil) } label: {
                             Label("Quit QuitBatch", systemImage: "power")
                         }

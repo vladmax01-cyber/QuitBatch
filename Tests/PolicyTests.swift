@@ -12,6 +12,22 @@ struct PolicyTests {
         let earlierSettings = Data(#"{"launchAtLogin":false,"confirmBeforeQuitting":false,"appearance":"system"}"#.utf8)
         let migrated = try JSONDecoder().decode(Preferences.self, from: earlierSettings)
         precondition(migrated.useGlass && migrated.windowTransparency == 0.08)
+        precondition(!migrated.forceQuitUnresponsiveApps)
+        let forceQuitSettings = try JSONDecoder().decode(Preferences.self,
+            from: Data(#"{"forceQuitUnresponsiveApps":true}"#.utf8))
+        precondition(forceQuitSettings.forceQuitUnresponsiveApps)
+        let halfSecondOfTicks = UInt64((1_000_000_000 / ResourceSampler.nanosecondsPerTick).rounded())
+        let earlierSample = ProcessResourceSnapshot(cpuTicks: 1_000_000_000,
+                                                    memoryBytes: 100, sampledAt: 10, startTicks: 42)
+        let laterSample = ProcessResourceSnapshot(cpuTicks: 1_000_000_000 + halfSecondOfTicks,
+                                                  memoryBytes: 200, sampledAt: 12, startTicks: 42)
+        let measured = ResourceSampler.usage(current: laterSample, previous: earlierSample)
+        precondition(abs((measured.cpuPercent ?? -1) - 50) < 0.001 && measured.memoryBytes == 200)
+        precondition(ResourceSampler.usage(current: laterSample, previous: nil).cpuPercent == nil)
+        let reusedPID = ProcessResourceSnapshot(cpuTicks: laterSample.cpuTicks + 1000,
+                                                memoryBytes: 300, sampledAt: 13, startTicks: 43)
+        precondition(ResourceSampler.usage(current: reusedPID, previous: laterSample).cpuPercent == nil)
+        precondition(ResourceSampler.read(pid: getpid(), at: 12)?.memoryBytes ?? 0 > 0)
         precondition(migrated.showProfileStrip)
         precondition(!migrated.useCustomAccent && migrated.customAccentHue == 0.59)
         precondition(migrated.accentDarkness == 0)

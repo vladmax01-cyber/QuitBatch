@@ -67,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         })
         window.makeKeyAndOrderFront(nil)
         previewWindow = window
+        model.setPanelVisible(true)
         #endif
     }
 
@@ -91,10 +92,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard popover.isShown else { return }
         suppressStatusReopenUntil = ProcessInfo.processInfo.systemUptime + 0.3
         popover.close()
+        model.setPanelVisible(false)
     }
 
     private func showPopover(relativeTo button: NSStatusBarButton) {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        model.setPanelVisible(true)
         if let window = popover.contentViewController?.view.window {
             if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
                 window.alphaValue = 1
@@ -198,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        model.setPanelVisible(false)
         suppressStatusReopenUntil = ProcessInfo.processInfo.systemUptime + 0.3
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         if let settingsClickMonitor { NSEvent.removeMonitor(settingsClickMonitor) }
