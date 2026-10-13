@@ -19,6 +19,22 @@ struct PolicyTests {
             from: Data(#"{"useCustomAccent":true,"customAccentHue":1.5,"accentDarkness":1.8}"#.utf8))
         precondition(customAccent.useCustomAccent && customAccent.customAccentHue == 1 &&
                      customAccent.accentDarkness == 1)
+        let blue = NSColor(deviceRed: 0, green: 0.478, blue: 1, alpha: 1)
+        let lightBackground = NSColor(calibratedWhite: 1, alpha: 1)
+        let darkBackground = NSColor(calibratedWhite: 0.118, alpha: 1)
+        let deepBlue = AccentTone.adjusted(blue, darkness: 1, darkAppearance: false)
+        precondition(AccentTone.contrast(deepBlue, against: lightBackground) >
+                     AccentTone.contrast(blue, against: lightBackground))
+        let graphite = AccentTone.adjusted(NSColor(calibratedWhite: 0.6, alpha: 1),
+                                           darkness: 1, darkAppearance: false)
+        precondition(abs(graphite.redComponent - graphite.blueComponent) < 0.02)
+        for hue in stride(from: 0.0, through: 0.8, by: 0.2) {
+            let base = NSColor(calibratedHue: hue, saturation: 0.8, brightness: 1, alpha: 1)
+            let tinted = AccentTone.adjusted(base, darkness: 1, darkAppearance: true)
+            let foreground = AccentTone.readableForeground(tinted, darkAppearance: true)
+            precondition(AccentTone.contrast(tinted, against: darkBackground) >= 2.99)
+            precondition(AccentTone.contrast(foreground, against: darkBackground) >= 4.49)
+        }
         precondition(migrated.windowWidth == 440 && migrated.windowHeight == 626)
         precondition(migrated.menuBarSymbol == "appcloser")
         precondition(Set(SymbolCatalog.profileChoices.map(\.id)).count == SymbolCatalog.profileChoices.count)
