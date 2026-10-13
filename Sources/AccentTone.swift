@@ -10,20 +10,32 @@ enum AccentTone {
         var alpha: CGFloat = 0
         rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
 
-        let depth = CGFloat(pow(min(1, max(0, darkness)), 0.85))
-        let targetBrightness = min(brightness, darkAppearance ? 0.58 : 0.42)
-        let targetSaturation = saturation < 0.12 ? saturation :
-            max(saturation, darkAppearance ? 0.82 : 0.88)
-        let candidate = NSColor(calibratedHue: hue,
-                                saturation: saturation + (targetSaturation - saturation) * depth,
-                                brightness: brightness + (targetBrightness - brightness) * depth,
-                                alpha: alpha)
-        guard darkAppearance, depth > 0 else { return candidate }
+        let depth = CGFloat(min(1, max(0, darkness)))
+        let background = NSColor(calibratedWhite: darkAppearance ? 0.118 : 1, alpha: 1)
+        let initialContrast = contrast(rgb, against: background)
+        let finalContrast = darkAppearance ? min(initialContrast, 3) : max(initialContrast, 9)
+        let desiredContrast = initialContrast + (finalContrast - initialContrast) * depth
+        let adjustedSaturation = saturation < 0.12 ? saturation :
+            saturation + (1 - saturation) * depth * 0.18
 
-        let background = NSColor(calibratedWhite: 0.118, alpha: 1)
-        if contrast(candidate, against: background) >= 3 { return candidate }
-        let endpoint = contrast(rgb, against: background) >= 3 ? rgb : .white
-        return blend(candidate, toward: endpoint, untilContrast: 3, against: background)
+        func color(brightness level: CGFloat) -> NSColor {
+            NSColor(calibratedHue: hue, saturation: adjustedSaturation,
+                    brightness: level, alpha: alpha)
+        }
+
+        var lower: CGFloat = 0
+        var upper = brightness
+        for _ in 0..<14 {
+            let middle = (lower + upper) / 2
+            let ratio = contrast(color(brightness: middle), against: background)
+            if (darkAppearance && ratio > desiredContrast) ||
+               (!darkAppearance && ratio < desiredContrast) {
+                upper = middle
+            } else {
+                lower = middle
+            }
+        }
+        return color(brightness: (lower + upper) / 2)
     }
 
     static func readableForeground(_ accent: NSColor, darkAppearance: Bool) -> NSColor {
@@ -31,6 +43,10 @@ enum AccentTone {
         guard contrast(accent, against: background) < 4.5 else { return accent }
         return blend(accent, toward: darkAppearance ? .white : .black,
                      untilContrast: 4.5, against: background)
+    }
+
+    static func textOnFill(_ accent: NSColor) -> NSColor {
+        contrast(.white, against: accent) >= 4 ? .white : .black
     }
 
     static func contrast(_ first: NSColor, against second: NSColor) -> CGFloat {
