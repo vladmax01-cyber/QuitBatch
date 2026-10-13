@@ -465,7 +465,14 @@ private struct ProfilesView: View {
     }
 
     private func profileIdentity(_ profile: AppProfile) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let runningToClose = model.apps.filter {
+            AppPolicy.decision(for: $0.reference, protected: $0.protected, profile: profile) == .close
+        }.count
+        let runningKept = model.apps.filter {
+            AppPolicy.decision(for: $0.reference, protected: $0.protected, profile: profile) == .keep
+        }.count
+        let protectedCount = model.apps.filter(\.protected).count
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: profile.validSymbol)
                     .font(.system(size: 22, weight: .medium))
@@ -474,24 +481,9 @@ private struct ProfilesView: View {
                     .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13),
                                 in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(profile.name.isEmpty ? "Untitled Profile" : profile.name)
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(1)
-                    Text("\(profile.close.count) Close  ·  \(profile.keep.count) Keep Open")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    let runningToClose = model.apps.filter {
-                        AppPolicy.decision(for: $0.reference, protected: $0.protected, profile: profile) == .close
-                    }.count
-                    let runningKept = model.apps.filter {
-                        AppPolicy.decision(for: $0.reference, protected: $0.protected, profile: profile) == .keep
-                    }.count
-                    Text("\(runningToClose) running to close · \(runningKept) kept open · \(model.apps.filter(\.protected).count) protected")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+                Text(profile.name.isEmpty ? "Untitled Profile" : profile.name)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
                 Spacer(minLength: 4)
                 Button(editingProfile ? "Done" : "Edit") { editingProfile.toggle() }
                     .controlSize(.small)
@@ -516,6 +508,29 @@ private struct ProfilesView: View {
                 .help("More profile actions")
                 .accessibilityLabel("More profile actions")
             }
+            HStack(spacing: 0) {
+                Button { closeExpanded = true } label: {
+                    profileActivityLabel("\(runningToClose) to close", symbol: "xmark.circle")
+                        .foregroundStyle(Palette.color(profile.accent, preferences: model.state.preferences))
+                }
+                .buttonStyle(.plain)
+                .help("Show the apps this profile will close now")
+                .accessibilityLabel("\(runningToClose) running apps to close. Expand Close")
+                Divider().frame(height: 18)
+                Button { keepExpanded = true } label: {
+                    profileActivityLabel("\(runningKept) kept open", symbol: "checkmark.circle")
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .help("Show apps kept open by this profile")
+                .accessibilityLabel("\(runningKept) running apps kept open. Expand Keep Open")
+                Divider().frame(height: 18)
+                profileActivityLabel("\(protectedCount) protected", symbol: "lock.shield")
+                    .foregroundStyle(.secondary)
+                    .help("Protected apps cannot be closed by App Closer")
+            }
+            .padding(.vertical, 2)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
             if editingProfile {
                 Divider()
                 profileEditor(profile)
@@ -523,6 +538,15 @@ private struct ProfilesView: View {
         }
         .padding(12)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func profileActivityLabel(_ title: String, symbol: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol).font(.system(size: 13))
+            Text(title).font(.caption.weight(.medium)).lineLimit(1).minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, minHeight: 34)
+        .contentShape(Rectangle())
     }
 
     private func profileEditor(_ profile: AppProfile) -> some View {
@@ -806,45 +830,69 @@ struct SettingsView: View {
 
                     card("Appearance", symbol: "circle.lefthalf.filled") {
                         HStack(spacing: 10) {
-                            Text("Theme").font(.subheadline).frame(width: 88, alignment: .leading)
-                            Picker("Theme", selection: Binding(
-                                get: { model.state.preferences.appearance },
-                                set: { value in model.updatePreferences { $0.appearance = value } }
-                            )) {
-                                Text("System").tag("system")
-                                Text("Light").tag("light")
-                                Text("Dark").tag("dark")
+                            Text("Theme").font(.subheadline).frame(width: 96, alignment: .leading)
+                            HStack(spacing: 2) {
+                                ForEach(["system", "light", "dark"], id: \.self) { theme in
+                                    let selected = model.state.preferences.appearance == theme
+                                    Button {
+                                        model.updatePreferences { $0.appearance = theme }
+                                    } label: {
+                                        Text(theme.capitalized)
+                                            .font(.subheadline.weight(selected ? .semibold : .regular))
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 5)
+                                            .background(selected ? Color.primary.opacity(0.13) : .clear,
+                                                        in: RoundedRectangle(cornerRadius: 7))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("\(theme.capitalized) theme")
+                                    .accessibilityAddTraits(selected ? .isSelected : [])
+                                }
                             }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
+                            .padding(3)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                            .accessibilityElement(children: .contain)
+                            .accessibilityLabel("Theme")
                         }
 
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack(spacing: 8) {
-                                Text("Accent color").font(.subheadline)
-                                Spacer()
-                                Circle()
-                                    .fill(Palette.accent(model.state.preferences))
-                                    .frame(width: 17, height: 17)
-                                Button("Default") {
-                                    model.updatePreferences {
-                                        $0.useCustomAccent = false
-                                        $0.accentDarkness = Preferences.defaultAccentDarkness
+                        HStack(alignment: .top, spacing: 10) {
+                            Text("Accent color").font(.subheadline)
+                                .frame(width: 96, alignment: .leading)
+                                .padding(.top, 3)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 7) {
+                                    Text(model.state.preferences.useCustomAccent ? "Custom color" : "System accent")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    Spacer(minLength: 4)
+                                    if model.state.preferences.useCustomAccent ||
+                                        model.state.preferences.accentDarkness != Preferences.defaultAccentDarkness {
+                                        Button("Default") {
+                                            model.updatePreferences {
+                                                $0.useCustomAccent = false
+                                                $0.accentDarkness = Preferences.defaultAccentDarkness
+                                            }
+                                        }
+                                        .controlSize(.small)
                                     }
                                 }
-                                .controlSize(.small)
-                                .disabled(!model.state.preferences.useCustomAccent &&
-                                          model.state.preferences.accentDarkness == Preferences.defaultAccentDarkness)
+                                HStack(spacing: 10) {
+                                    AccentHueSlider(value: Binding(
+                                        get: { model.state.preferences.customAccentHue },
+                                        set: { model.setAccentHue($0, persist: false) }
+                                    ), color: Palette.accent(model.state.preferences), onCommit: { model.save() })
+                                    Circle()
+                                        .fill(Palette.accent(model.state.preferences))
+                                        .frame(width: 17, height: 17)
+                                        .frame(width: 38)
+                                        .accessibilityLabel("Current accent color")
+                                }
                             }
-                            AccentHueSlider(value: Binding(
-                                get: { model.state.preferences.customAccentHue },
-                                set: { model.setAccentHue($0, persist: false) }
-                            ), color: Palette.accent(model.state.preferences), onCommit: { model.save() })
                         }
 
                         HStack(spacing: 10) {
                             Text("Darken color").font(.subheadline)
-                                .frame(width: 88, alignment: .leading)
+                                .frame(width: 96, alignment: .leading)
                             Slider(value: Binding(
                                 get: { model.state.preferences.accentDarkness },
                                 set: { model.setAccentDarkness($0, persist: false) }
@@ -857,20 +905,14 @@ struct SettingsView: View {
                                 .frame(width: 38, alignment: .trailing)
                         }
 
+                        Divider().padding(.vertical, 2)
+
                         Toggle("Use Liquid Glass", isOn: Binding(
                             get: { model.state.preferences.useGlass },
                             set: { value in model.updatePreferences { $0.useGlass = value } }
                         ))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Toggle("Show profile list", isOn: Binding(
-                                get: { model.state.preferences.showProfileStrip },
-                                set: { value in model.updatePreferences { $0.showProfileStrip = value } }
-                            ))
-                            Text("Shown when you have more than one profile.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
                         HStack(spacing: 10) {
-                            Text("Transparency").font(.subheadline).frame(width: 88, alignment: .leading)
+                            Text("Transparency").font(.subheadline).frame(width: 96, alignment: .leading)
                             Slider(value: Binding(
                                 get: { model.state.preferences.windowTransparency },
                                 set: { value in model.updatePreferences { $0.windowTransparency = value } }
@@ -881,6 +923,14 @@ struct SettingsView: View {
                                 .frame(width: 38, alignment: .trailing)
                         }
                         .disabled(!model.state.preferences.useGlass)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Toggle("Show profile list", isOn: Binding(
+                                get: { model.state.preferences.showProfileStrip },
+                                set: { value in model.updatePreferences { $0.showProfileStrip = value } }
+                            ))
+                            Text("Shown when you have more than one profile.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
 
                     card("Keyboard shortcut", symbol: "keyboard") {
