@@ -54,6 +54,7 @@ final class AppModel: ObservableObject {
     var onShortcutChanged: ((Shortcut?) -> Void)?
     var onSizeChanged: ((CGSize) -> Void)?
     var onMenuBarSymbolChanged: ((String) -> Void)?
+    var onKeepPanelWithSettingsChanged: ((Bool) -> Void)?
 
     init(store: StateStore = StateStore()) {
         self.store = store
@@ -441,12 +442,16 @@ final class AppModel: ObservableObject {
     func updatePreferences(_ change: (inout Preferences) -> Void) {
         let oldShortcut = state.preferences.shortcut
         let oldMenuBarSymbol = state.preferences.menuBarSymbol
+        let oldKeepPanelWithSettings = state.preferences.keepPanelOpenWithSettings
         change(&state.preferences)
         save()
         applyAppearance()
         if oldShortcut != state.preferences.shortcut { onShortcutChanged?(state.preferences.shortcut) }
         if oldMenuBarSymbol != state.preferences.menuBarSymbol {
             onMenuBarSymbolChanged?(state.preferences.menuBarSymbol)
+        }
+        if oldKeepPanelWithSettings != state.preferences.keepPanelOpenWithSettings {
+            onKeepPanelWithSettingsChanged?(state.preferences.keepPanelOpenWithSettings)
         }
     }
 

@@ -16,7 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var hotKey: EventHotKeyRef?
     private var hotKeyHandler: EventHandlerRef?
     private var outsideClickMonitor: Any?
-    private var settingsClickMonitor: Any?
+    private var lastPanelFrame: NSRect?
     private var suppressStatusReopenUntil = 0.0
     #if UI_PREVIEW
     private var previewWindow: NSWindow?
@@ -49,9 +49,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         model.onSizeChanged = { [weak self] size in
             self?.popover.contentSize = size
+            DispatchQueue.main.async { self?.placeSettingsWindow() }
             #if UI_PREVIEW
             self?.previewWindow?.setContentSize(size)
             #endif
+        }
+        model.onKeepPanelWithSettingsChanged = { [weak self] keepOpen in
+            guard let self, self.settingsWindow?.isVisible == true else { return }
+            if keepOpen {
+                if !self.popover.isShown, let button = self.statusItem.button {
+                    self.showPopover(relativeTo: button)
+                }
+                self.placeSettingsWindow()
+                self.settingsWindow?.makeKeyAndOrderFront(nil)
+            } else {
+                self.dismissPopover()
+            }
         }
         registerShortcut(model.state.preferences.shortcut)
         #if UI_PREVIEW
@@ -90,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func dismissPopover() {
         guard popover.isShown else { return }
+        lastPanelFrame = popover.contentViewController?.view.window?.frame
         suppressStatusReopenUntil = ProcessInfo.processInfo.systemUptime + 0.3
         popover.close()
         model.setPanelVisible(false)
@@ -97,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showPopover(relativeTo button: NSStatusBarButton) {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        lastPanelFrame = popover.contentViewController?.view.window?.frame
         model.setPanelVisible(true)
         if let window = popover.contentViewController?.view.window {
             if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -112,11 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         monitorOutsideClicks()
+        if model.state.preferences.keepPanelOpenWithSettings { placeSettingsWindow() }
     }
 
     private func showQuickActions() {
         guard let button = statusItem.button else { return }
-        dismissPopover()
+        if !model.state.preferences.keepPanelOpenWithSettings { dismissPopover() }
         let menu = NSMenu(title: "QuitBatch Profiles")
         if model.state.profiles.isEmpty {
             let empty = NSMenuItem(title: "No saved profiles", action: nil, keyEquivalent: "")
@@ -154,12 +170,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    @objc private func openMain() { togglePopover() }
+    @objc private func openMain() {
+        guard !popover.isShown, let button = statusItem.button else { return }
+        showPopover(relativeTo: button)
+    }
     @objc private func openSettingsWindow() {
-        dismissPopover()
-        let availableHeight = (NSScreen.main?.visibleFrame.height ?? 760) - 64
-        let settingsSize = NSSize(width: 510, height: min(540, max(500, availableHeight)))
+        if !model.state.preferences.keepPanelOpenWithSettings { dismissPopover() }
+        let screen = panelReference()?.screen ?? NSScreen.main
+        let visibleHeight = screen?.visibleFrame.height ?? 700
+        let settingsSize = NSSize(width: 380, height: min(470, max(430, visibleHeight - 36)))
         if let settingsWindow {
+            if settingsWindow.isMiniaturized { settingsWindow.deminiaturize(nil) }
+            settingsWindow.setContentSize(settingsSize)
+            placeSettingsWindow()
             settingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -169,14 +192,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                               backing: .buffered, defer: false)
         window.title = "QuitBatch"
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 430, height: 500)
-        window.maxSize = NSSize(width: 720, height: 900)
+        window.contentMinSize = NSSize(width: 360, height: 430)
+        window.contentMaxSize = NSSize(width: 480, height: 650)
         window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
         window.setContentSize(settingsSize)
-        window.center()
         settingsWindow = window
+        placeSettingsWindow()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func panelReference() -> (frame: NSRect, screen: NSScreen)? {
+        #if UI_PREVIEW
+        if let previewWindow, previewWindow.isVisible, let screen = previewWindow.screen {
+            return (previewWindow.frame, screen)
+        }
+        #endif
+        if popover.isShown, let window = popover.contentViewController?.view.window,
+           let screen = window.screen {
+            return (window.frame, screen)
+        }
+        guard let button = statusItem.button, let statusWindow = button.window,
+              let screen = statusWindow.screen ?? NSScreen.main else { return nil }
+        if let lastPanelFrame, lastPanelFrame.intersects(screen.visibleFrame) {
+            return (lastPanelFrame, screen)
+        }
+        let buttonFrame = statusWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        let width = model.state.preferences.windowWidth
+        let height = model.state.preferences.windowHeight
+        let x = min(max(buttonFrame.midX - width / 2, screen.visibleFrame.minX),
+                    screen.visibleFrame.maxX - width)
+        return (NSRect(x: x, y: buttonFrame.minY - height, width: width, height: height), screen)
+    }
+
+    private func placeSettingsWindow() {
+        guard let settingsWindow, settingsWindow.isMiniaturized == false,
+              let reference = panelReference() else { return }
+        let frame = WindowPlacement.beside(reference.frame, size: settingsWindow.frame.size,
+                                           in: reference.screen.visibleFrame)
+        if frame.size == settingsWindow.frame.size {
+            settingsWindow.setFrameOrigin(frame.origin)
+        } else {
+            settingsWindow.setFrame(frame, display: false)
+        }
     }
     @objc private func quitUtility() { NSApp.terminate(nil) }
 
@@ -193,21 +251,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.dismissPopover()
             }
         }
-        settingsClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            if let self, self.popover.isShown, event.window === self.settingsWindow {
-                self.dismissPopover()
-            }
-            return event
-        }
     }
 
     func popoverDidClose(_ notification: Notification) {
         model.setPanelVisible(false)
         suppressStatusReopenUntil = ProcessInfo.processInfo.systemUptime + 0.3
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
-        if let settingsClickMonitor { NSEvent.removeMonitor(settingsClickMonitor) }
         outsideClickMonitor = nil
-        settingsClickMonitor = nil
     }
 
     func applicationWillTerminate(_ notification: Notification) {

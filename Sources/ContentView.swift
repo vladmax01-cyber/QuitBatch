@@ -946,6 +946,11 @@ struct SettingsView: View {
                     }
 
                     card("General", symbol: "switch.2") {
+                        Toggle("Keep panel open with Settings", isOn: Binding(
+                            get: { model.state.preferences.keepPanelOpenWithSettings },
+                            set: { value in model.updatePreferences { $0.keepPanelOpenWithSettings = value } }
+                        ))
+                        .help("Show Settings beside the QuitBatch panel")
                         Toggle("Launch at login", isOn: Binding(
                             get: { model.state.preferences.launchAtLogin },
                             set: { model.setLaunchAtLogin($0) }
@@ -1139,7 +1144,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .frame(minWidth: 430, minHeight: 500)
+        .frame(minWidth: 360, minHeight: 430)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(colorScheme)
         .tint(Palette.accentForeground(model.state.preferences))

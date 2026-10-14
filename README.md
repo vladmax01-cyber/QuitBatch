@@ -28,7 +28,7 @@ Click the menu bar symbol to open or close the panel. Clicking outside also dism
 
 ### Make it yours
 
-Settings has system, light, and dark appearance; a choice of menu bar symbols; and a custom accent hue. **Darken color** adjusts the accent from 0 to 100% without dimming the window background. The Layout section sets icon sizes separately for Open Apps and Profiles, with a smaller default for both. You can also change the glass transparency, show or hide the profile list, launch at login, require confirmation before quitting apps, and quit QuitBatch itself. Settings opens at a compact size and can be resized.
+Settings opens beside the main panel at a smaller size. The **Keep panel open with Settings** switch is on by default; turn it off if you prefer the panel to close when Settings opens. Settings has system, light, and dark appearance; a choice of menu bar symbols; and a custom accent hue. **Darken color** adjusts the accent from 0 to 100% without dimming the window background. The Layout section sets icon sizes separately for Open Apps and Profiles, with a smaller default for both. You can also change the glass transparency, show or hide the profile list, launch at login, require confirmation before quitting apps, and quit QuitBatch itself. The Settings window can be resized within compact limits.
 
 <img src="Assets/Screenshots/settings.png" alt="General and layout settings with small icons selected" width="600">
 

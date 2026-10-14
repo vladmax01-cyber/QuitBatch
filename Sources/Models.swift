@@ -82,6 +82,7 @@ struct Preferences: Codable, Equatable {
     var shortcut: Shortcut? = nil
     var useGlass = true
     var showProfileStrip = true
+    var keepPanelOpenWithSettings = true
     var openAppsIconSize: IconSizeOption = .small
     var profilesIconSize: IconSizeOption = .small
     var useCustomAccent = false
@@ -95,6 +96,7 @@ struct Preferences: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case launchAtLogin, confirmBeforeQuitting, forceQuitUnresponsiveApps, appearance, menuBarSymbol, shortcut, useGlass, showProfileStrip,
+             keepPanelOpenWithSettings,
              openAppsIconSize, profilesIconSize,
              useCustomAccent, customAccentHue, accentDarkness, windowTransparency,
              windowWidth, windowHeight
@@ -112,6 +114,7 @@ struct Preferences: Codable, Equatable {
         shortcut = try values.decodeIfPresent(Shortcut.self, forKey: .shortcut)
         useGlass = try values.decodeIfPresent(Bool.self, forKey: .useGlass) ?? true
         showProfileStrip = try values.decodeIfPresent(Bool.self, forKey: .showProfileStrip) ?? true
+        keepPanelOpenWithSettings = try values.decodeIfPresent(Bool.self, forKey: .keepPanelOpenWithSettings) ?? true
         openAppsIconSize = (try? values.decode(IconSizeOption.self, forKey: .openAppsIconSize)) ?? .small
         profilesIconSize = (try? values.decode(IconSizeOption.self, forKey: .profilesIconSize)) ?? .small
         useCustomAccent = try values.decodeIfPresent(Bool.self, forKey: .useCustomAccent) ?? false

@@ -36,6 +36,10 @@ struct PolicyTests {
         precondition(ResourceSampler.usage(current: reusedPID, previous: laterSample).cpuPercent == nil)
         precondition(ResourceSampler.read(pid: getpid(), at: 12)?.memoryBytes ?? 0 > 0)
         precondition(migrated.showProfileStrip)
+        precondition(migrated.keepPanelOpenWithSettings)
+        let separateSettings = try JSONDecoder().decode(Preferences.self,
+            from: Data(#"{"keepPanelOpenWithSettings":false}"#.utf8))
+        precondition(!separateSettings.keepPanelOpenWithSettings)
         precondition(!migrated.useCustomAccent && migrated.customAccentHue == 0.59)
         precondition(migrated.accentDarkness == 0)
         let customAccent = try JSONDecoder().decode(Preferences.self,
@@ -69,6 +73,38 @@ struct PolicyTests {
             }
         }
         precondition(migrated.windowWidth == 400 && migrated.windowHeight == 500)
+        let display = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let leftPlacement = WindowPlacement.beside(CGRect(x: 820, y: 250, width: 360, height: 480),
+                                                   size: CGSize(width: 400, height: 510), in: display)
+        precondition(leftPlacement.maxX == 810 && leftPlacement.maxY == 730)
+        let rightPlacement = WindowPlacement.beside(CGRect(x: 20, y: 250, width: 360, height: 480),
+                                                    size: CGSize(width: 400, height: 510), in: display)
+        precondition(rightPlacement.minX == 390 && rightPlacement.maxY == 730)
+        let eitherSidePlacement = WindowPlacement.beside(CGRect(x: 400, y: 250, width: 200, height: 480),
+                                                         size: CGSize(width: 300, height: 510), in: display)
+        precondition(eitherSidePlacement.minX == 610)
+        let offsetDisplay = CGRect(x: -1200, y: 0, width: 1200, height: 800)
+        let secondScreenPlacement = WindowPlacement.beside(
+            CGRect(x: -1150, y: 250, width: 360, height: 480),
+            size: CGSize(width: 400, height: 510), in: offsetDisplay)
+        precondition(offsetDisplay.contains(secondScreenPlacement))
+        let topPlacement = WindowPlacement.beside(CGRect(x: 20, y: 700, width: 360, height: 200),
+                                                  size: CGSize(width: 400, height: 510), in: display)
+        precondition(topPlacement.maxY == display.maxY)
+        let bottomPlacement = WindowPlacement.beside(CGRect(x: 20, y: 0, width: 360, height: 100),
+                                                     size: CGSize(width: 400, height: 510), in: display)
+        precondition(bottomPlacement.minY == display.minY)
+        let narrowDisplay = CGRect(x: 0, y: 0, width: 700, height: 600)
+        let narrowPlacement = WindowPlacement.beside(CGRect(x: 350, y: 100, width: 340, height: 480),
+                                                     size: CGSize(width: 400, height: 510), in: narrowDisplay)
+        precondition(narrowDisplay.contains(narrowPlacement))
+        let compactDisplay = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let compactPlacement = WindowPlacement.beside(CGRect(x: 400, y: 80, width: 400, height: 500),
+                                                      size: CGSize(width: 380, height: 498), in: compactDisplay)
+        precondition(compactPlacement.maxX == 390 && compactDisplay.contains(compactPlacement))
+        let oversizedPlacement = WindowPlacement.beside(CGRect(x: 350, y: 100, width: 340, height: 480),
+                                                        size: CGSize(width: 900, height: 700), in: narrowDisplay)
+        precondition(oversizedPlacement == narrowDisplay)
         precondition(migrated.menuBarSymbol == "appcloser")
         precondition(Set(SymbolCatalog.profileChoices.map(\.id)).count == SymbolCatalog.profileChoices.count)
         precondition(Set(SymbolCatalog.menuBarChoices.map(\.id)).count == SymbolCatalog.menuBarChoices.count)
@@ -117,6 +153,13 @@ struct PolicyTests {
         model.updatePreferences { $0.openAppsIconSize = .large; $0.profilesIconSize = .medium }
         let savedIconSizes = try store.load().preferences
         precondition(savedIconSizes.openAppsIconSize == .large && savedIconSizes.profilesIconSize == .medium)
+        var keepPanelEvents: [Bool] = []
+        model.onKeepPanelWithSettingsChanged = { keepPanelEvents.append($0) }
+        model.updatePreferences { $0.keepPanelOpenWithSettings = false }
+        model.updatePreferences { $0.keepPanelOpenWithSettings = false }
+        precondition(keepPanelEvents == [false])
+        let savedKeepPanel = try store.load().preferences.keepPanelOpenWithSettings
+        precondition(savedKeepPanel == false)
         model.setWindowTransparency(0.65, persist: true)
         let savedTransparency = try store.load().preferences.windowTransparency
         precondition(savedTransparency == 0.65)
