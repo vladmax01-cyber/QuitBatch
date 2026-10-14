@@ -16,7 +16,7 @@ Open **Open Apps**, search by app name, and tick the apps you want to quit. Sort
 
 ### Save a routine
 
-Profiles have two lists: **Close** and **Keep Open**. Add apps from the running list or choose an app bundle. You can fold either list away, edit the profile's name, symbol, and accent, and duplicate or delete it from the More menu. The profile card shows what it would close, keep open, and protect right now. These counts may differ from the number of saved rules because one app can have multiple running instances.
+Profiles have two lists: **Close** and **Keep Open**. Add apps from the running list or choose an app bundle. You can fold either list away, edit the profile's name, choose its icon and accent, and duplicate or delete it from the More menu. The profile card shows what it would close, keep open, and protect right now. These counts may differ from the number of saved rules because one app can have multiple running instances.
 
 Turn on **Include newly detected apps** if anything you haven't listed under Keep Open should also close. You can show or hide the profile list when you have more than one profile. The included **Exam Mode** is an editable example, not a preset you have to use.
 

@@ -404,7 +404,7 @@ private struct OpenAppsView: View {
                         }
                         .font(.caption)
                         .padding(.horizontal, 11)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
                         .background(Color.primary.opacity(model.selectedPIDs.contains(app.id) ? 0.065 : 0.025),
                                     in: RoundedRectangle(cornerRadius: 10))
                     }
@@ -449,7 +449,9 @@ private struct OpenAppsView: View {
                                              textColor: Palette.textOnAccent(model.state.preferences)))
                 .disabled(model.selectedCount == 0 || model.busy)
             }
-            .padding(24)
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
         }
     }
 }
@@ -674,7 +676,7 @@ private struct ProfilesView: View {
     }
 
     private func profileEditor(_ profile: AppProfile) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             LabeledContent("Name") {
                 TextField("Profile name", text: Binding(
                     get: { model.selectedProfile?.name ?? "" },
@@ -682,49 +684,51 @@ private struct ProfilesView: View {
                 ))
                 .textFieldStyle(.roundedBorder)
             }
-            HStack(spacing: 12) {
-                Text("Symbol").font(.subheadline.weight(.semibold))
-                Spacer()
+            HStack(spacing: 8) {
+                Text("Icon").font(.subheadline)
                 Button { showingProfileSymbols.toggle() } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: profile.validSymbol)
-                            .font(.system(size: 18))
-                            .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
-                        Text("Choose")
-                            .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
-                    }
+                    Image(systemName: profile.validSymbol)
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
+                        .frame(width: 32, height: 26)
                 }
                 .controlSize(.small)
                 .buttonStyle(.bordered)
-                .accessibilityLabel("Choose profile symbol")
+                .help("Choose profile icon")
+                .accessibilityLabel("Choose profile icon")
                 .popover(isPresented: $showingProfileSymbols, arrowEdge: .top) {
                     profileSymbolPicker(profile)
                 }
-                Spacer()
-            }
-            HStack(spacing: 10) {
-                TextField("Other SF Symbol name", text: Binding(
-                    get: { model.selectedProfile?.symbol ?? "" },
-                    set: { value in model.updateProfile(profile.id) { $0.symbol = value } }
-                ))
-                .textFieldStyle(.roundedBorder)
-                Picker("Accent", selection: Binding(
-                    get: { model.selectedProfile?.accent ?? "blue" },
-                    set: { value in model.updateProfile(profile.id) { $0.accent = value == "blue" ? nil : value } }
-                )) {
+                Spacer(minLength: 6)
+                Text("Accent").font(.subheadline)
+                Menu {
                     ForEach(["blue", "teal", "orange", "purple", "red"], id: \.self) { color in
-                        Text(color == "blue" ? "App color" : color.capitalized).tag(color)
+                        Button {
+                            model.updateProfile(profile.id) { $0.accent = color == "blue" ? nil : color }
+                        } label: {
+                            if (profile.accent ?? "blue") == color {
+                                Label(color == "blue" ? "App color" : color.capitalized,
+                                      systemImage: "checkmark")
+                            } else {
+                                Text(color == "blue" ? "App color" : color.capitalized)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Palette.color(profile.accent, preferences: model.state.preferences))
+                            .frame(width: 10, height: 10)
+                        Text(profile.accent == nil || profile.accent == "blue" ? "App color" : (profile.accent?.capitalized ?? "App color"))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
                     }
                 }
-                .frame(width: 125)
-            }
-            if NSImage(systemSymbolName: profile.symbol, accessibilityDescription: nil) == nil {
-                Text("Symbol not found. QuitBatch will show its default icon.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .controlSize(.small)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("Profile accent")
             }
         }
     }
@@ -972,16 +976,14 @@ struct SettingsView: View {
                             get: { model.state.preferences.profilesIconSize },
                             set: { value in model.updatePreferences { $0.profilesIconSize = value } }
                         ))
-                        Divider().padding(.vertical, 2)
-                        HStack(spacing: 10) {
-                            Text("Panel size").font(.subheadline)
-                                .frame(width: 96, alignment: .leading)
-                            Text("Drag the corner to resize.")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Spacer(minLength: 4)
-                            Button("Compact") { model.resizePopover(width: 400, height: 500, persist: true) }
-                                .controlSize(.small)
-                                .help("Return the menu panel to its compact size")
+                        HStack {
+                            Spacer()
+                            Button { model.resizePopover(width: 400, height: 500, persist: true) } label: {
+                                Label("Reset panel size", systemImage: "arrow.counterclockwise")
+                            }
+                            .font(.caption)
+                            .buttonStyle(.borderless)
+                            .help("Reset the menu panel to its compact size")
                         }
                     }
 
@@ -1335,9 +1337,10 @@ private struct SoftActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(textColor)
+            .foregroundStyle(isEnabled ? textColor : Color.secondary)
             .padding(.vertical, 11)
-            .background(color.opacity(isEnabled ? 1 : 0.4), in: RoundedRectangle(cornerRadius: 11))
+            .background(isEnabled ? color : Color.primary.opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: 11))
             .contentShape(RoundedRectangle(cornerRadius: 11))
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.68),
