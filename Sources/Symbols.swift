@@ -30,7 +30,23 @@ enum SymbolCatalog {
         .init(id: "paintbrush", title: "Creative"),
         .init(id: "camera", title: "Photos"),
         .init(id: "globe", title: "Web"),
-        .init(id: "lock.shield", title: "Privacy")
+        .init(id: "lock.shield", title: "Privacy"),
+        .init(id: "person.2", title: "Team"),
+        .init(id: "person.crop.circle", title: "Personal"),
+        .init(id: "bolt", title: "Energy"),
+        .init(id: "leaf", title: "Calm"),
+        .init(id: "cup.and.saucer", title: "Break"),
+        .init(id: "dumbbell", title: "Fitness"),
+        .init(id: "pencil", title: "Writing"),
+        .init(id: "folder", title: "Files"),
+        .init(id: "tray.full", title: "Inbox"),
+        .init(id: "headphones", title: "Audio"),
+        .init(id: "video", title: "Video"),
+        .init(id: "terminal", title: "Development"),
+        .init(id: "paintpalette", title: "Design"),
+        .init(id: "map", title: "Explore"),
+        .init(id: "banknote", title: "Finance"),
+        .init(id: "calendar.badge.clock", title: "Planning")
     ]
 
     static let menuBarChoices: [SymbolChoice] = [

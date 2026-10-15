@@ -57,17 +57,67 @@ enum IconSizeOption: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
-    var openApp: CGFloat {
+    var artwork: CGFloat {
         switch self { case .small: 20; case .medium: 26; case .large: 32 }
     }
-    var profileApp: CGFloat {
-        switch self { case .small: 18; case .medium: 24; case .large: 30 }
+    var badge: CGFloat { artwork + 12 }
+}
+
+enum ChromeIconMetrics {
+    static let brand: CGFloat = 26
+    static let action: CGFloat = 17
+    static let section: CGFloat = 16
+}
+
+enum PanelSection: String, Codable, CaseIterable, Identifiable {
+    case openApps, profiles, drives
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .openApps: "Apps"
+        case .profiles: "Profiles"
+        case .drives: "Drives"
+        }
     }
-    var profileSymbol: CGFloat {
-        switch self { case .small: 32; case .medium: 40; case .large: 48 }
+    var symbol: String {
+        switch self {
+        case .openApps: "square.stack.3d.up"
+        case .profiles: "square.on.square"
+        case .drives: "externaldrive"
+        }
     }
-    var profileStrip: CGFloat {
-        switch self { case .small: 14; case .medium: 17; case .large: 20 }
+}
+
+enum AppSortMode: String, Codable, CaseIterable, Identifiable {
+    case name, cpu, memory
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .name: "Name"
+        case .cpu: "CPU"
+        case .memory: "Memory"
+        }
+    }
+}
+
+enum ReorderMath {
+    static func destination(startIndex: Int, translation: CGFloat, pitch: CGFloat, count: Int) -> Int {
+        guard count > 0, pitch > 0 else { return startIndex }
+        let steps = Int((translation / pitch).rounded())
+        return min(count - 1, max(0, startIndex + steps))
+    }
+
+    static func clampedTranslation(_ translation: CGFloat, from index: Int, pitch: CGFloat, count: Int) -> CGFloat {
+        guard count > 0, pitch > 0 else { return 0 }
+        return min(CGFloat(count - 1 - index) * pitch, max(-CGFloat(index) * pitch, translation))
+    }
+
+    static func shift(index: Int, from source: Int, to destination: Int, pitch: CGFloat) -> CGFloat {
+        if source < destination && index > source && index <= destination { return -pitch }
+        if source > destination && index >= destination && index < source { return pitch }
+        return 0
     }
 }
 
@@ -91,6 +141,10 @@ struct Preferences: Codable, Equatable {
     var windowTransparency = 0.08
     var windowWidth = 400.0
     var windowHeight = 500.0
+    var sectionOrder: [PanelSection] = PanelSection.allCases
+    var hiddenSections: Set<PanelSection> = []
+    var appSortMode: AppSortMode = .name
+    var appSortOrder: [AppSortMode] = AppSortMode.allCases
 
     init() {}
 
@@ -99,7 +153,7 @@ struct Preferences: Codable, Equatable {
              keepPanelOpenWithSettings,
              openAppsIconSize, profilesIconSize,
              useCustomAccent, customAccentHue, accentDarkness, windowTransparency,
-             windowWidth, windowHeight
+             windowWidth, windowHeight, sectionOrder, hiddenSections, appSortMode, appSortOrder
     }
 
     init(from decoder: Decoder) throws {
@@ -123,6 +177,15 @@ struct Preferences: Codable, Equatable {
         windowTransparency = min(1, max(0, try values.decodeIfPresent(Double.self, forKey: .windowTransparency) ?? 0.08))
         windowWidth = min(720, max(380, try values.decodeIfPresent(Double.self, forKey: .windowWidth) ?? 400))
         windowHeight = min(900, max(460, try values.decodeIfPresent(Double.self, forKey: .windowHeight) ?? 500))
+        let savedOrder = (try? values.decode([PanelSection].self, forKey: .sectionOrder)) ?? []
+        var seen: Set<PanelSection> = []
+        sectionOrder = (savedOrder + PanelSection.allCases).filter { seen.insert($0).inserted }
+        hiddenSections = (try? values.decode(Set<PanelSection>.self, forKey: .hiddenSections)) ?? []
+        if hiddenSections.count == PanelSection.allCases.count { hiddenSections.remove(.openApps) }
+        appSortMode = (try? values.decode(AppSortMode.self, forKey: .appSortMode)) ?? .name
+        let savedSortOrder = (try? values.decode([AppSortMode].self, forKey: .appSortOrder)) ?? []
+        var seenSortModes: Set<AppSortMode> = []
+        appSortOrder = (savedSortOrder + AppSortMode.allCases).filter { seenSortModes.insert($0).inserted }
     }
 }
 
@@ -176,7 +239,15 @@ final class StateStore {
 
     func load() throws -> SavedState {
         guard FileManager.default.fileExists(atPath: url.path) else { return .initial() }
-        return try JSONDecoder().decode(SavedState.self, from: Data(contentsOf: url))
+        let data = try Data(contentsOf: url)
+        do {
+            return try JSONDecoder().decode(SavedState.self, from: data)
+        } catch {
+            let backup = url.deletingLastPathComponent()
+                .appendingPathComponent("state-unreadable-\(UUID().uuidString).json")
+            try data.write(to: backup, options: .atomic)
+            throw error
+        }
     }
 
     func save(_ state: SavedState) throws {

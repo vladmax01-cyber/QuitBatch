@@ -1,5 +1,15 @@
 import Foundation
 
+enum SettingsWindowLayout {
+    static let preferredWidth: CGFloat = 360
+    static let preferredHeight: CGFloat = 450
+
+    static func contentSize(in visibleFrame: CGRect) -> CGSize {
+        CGSize(width: preferredWidth,
+               height: min(preferredHeight, max(1, visibleFrame.height - 36)))
+    }
+}
+
 enum WindowPlacement {
     static func beside(_ panel: CGRect, size: CGSize, in visibleFrame: CGRect,
                        gap: CGFloat = 10) -> CGRect {

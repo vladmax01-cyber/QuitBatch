@@ -5,8 +5,9 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     #if UI_PREVIEW
-    private let model = AppModel(store: StateStore(url: FileManager.default.temporaryDirectory
-        .appendingPathComponent("AppCloserPreview-state.json")))
+    private let model = AppModel(store: StateStore(url: URL(fileURLWithPath:
+        ProcessInfo.processInfo.environment["QUITBATCH_PREVIEW_STATE"] ??
+        FileManager.default.temporaryDirectory.appendingPathComponent("AppCloserPreview-state.json").path)))
     #else
     private let model = AppModel()
     #endif
@@ -84,6 +85,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         #endif
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !popover.isShown, let button = statusItem.button {
+            showPopover(relativeTo: button)
+        }
+        return true
+    }
+
     @objc private func statusClicked(_ sender: Any?) {
         if NSApp.currentEvent?.modifierFlags.contains(.option) == true {
             showQuickActions()
@@ -110,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func showPopover(relativeTo button: NSStatusBarButton) {
+        UpdateChecker.shared.checkIfNeeded()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         lastPanelFrame = popover.contentViewController?.view.window?.frame
         model.setPanelVisible(true)
@@ -152,6 +161,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let open = NSMenuItem(title: "Open QuitBatch", action: #selector(openMain), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
+        let drives = NSMenuItem(title: "Open Drives", action: #selector(openDrives), keyEquivalent: "")
+        drives.target = self
+        menu.addItem(drives)
+        let customize = NSMenuItem(title: "Customize Sections…", action: #selector(customizeSections), keyEquivalent: "")
+        customize.target = self
+        menu.addItem(customize)
         let settings = NSMenuItem(title: "Settings", action: #selector(openSettingsWindow), keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
@@ -165,9 +180,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let raw = sender.representedObject as? String, let id = UUID(uuidString: raw) else { return }
         model.activateProfile(id)
         if !popover.isShown, let button = statusItem.button {
-            model.section = .openApps
+            model.section = model.visibleSections.first ?? .openApps
             showPopover(relativeTo: button)
         }
+    }
+
+    @objc private func openDrives() {
+        model.setSectionVisible(.drives, visible: true)
+        model.section = .drives
+        if !popover.isShown, let button = statusItem.button { showPopover(relativeTo: button) }
+    }
+
+    @objc private func customizeSections() {
+        if !popover.isShown, let button = statusItem.button { showPopover(relativeTo: button) }
+        model.customizingSections = true
     }
 
     @objc private func openMain() {
@@ -177,24 +203,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func openSettingsWindow() {
         if !model.state.preferences.keepPanelOpenWithSettings { dismissPopover() }
         let screen = panelReference()?.screen ?? NSScreen.main
-        let visibleHeight = screen?.visibleFrame.height ?? 700
-        let settingsSize = NSSize(width: 380, height: min(470, max(430, visibleHeight - 36)))
+        let settingsSize = SettingsWindowLayout.contentSize(
+            in: screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600))
         if let settingsWindow {
+            let needsSizeUpdate = settingsWindow.contentLayoutRect.size != settingsSize
+            if needsSizeUpdate {
+                settingsWindow.contentViewController = NSHostingController(
+                    rootView: SettingsView(model: model, contentSize: settingsSize))
+                settingsWindow.setContentSize(settingsSize)
+            }
             if settingsWindow.isMiniaturized { settingsWindow.deminiaturize(nil) }
-            settingsWindow.setContentSize(settingsSize)
             placeSettingsWindow()
             settingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: settingsSize),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              styleMask: [.titled, .closable, .miniaturizable],
                               backing: .buffered, defer: false)
         window.title = "QuitBatch"
         window.isReleasedWhenClosed = false
-        window.contentMinSize = NSSize(width: 360, height: 430)
-        window.contentMaxSize = NSSize(width: 480, height: 650)
-        window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
+        window.contentViewController = NSHostingController(
+            rootView: SettingsView(model: model, contentSize: settingsSize))
         window.setContentSize(settingsSize)
         settingsWindow = window
         placeSettingsWindow()
@@ -228,6 +258,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func placeSettingsWindow() {
         guard let settingsWindow, settingsWindow.isMiniaturized == false,
               let reference = panelReference() else { return }
+        if !model.state.preferences.keepPanelOpenWithSettings && !popover.isShown {
+            let visible = reference.screen.visibleFrame
+            settingsWindow.setFrameOrigin(NSPoint(x: visible.midX - settingsWindow.frame.width / 2,
+                                                   y: visible.midY - settingsWindow.frame.height / 2))
+            return
+        }
         let frame = WindowPlacement.beside(reference.frame, size: settingsWindow.frame.size,
                                            in: reference.screen.visibleFrame)
         if frame.size == settingsWindow.frame.size {
@@ -248,6 +284,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                     let buttonFrame = window.convertToScreen(button.convert(button.bounds, to: nil))
                     if buttonFrame.insetBy(dx: -4, dy: -4).contains(clickLocation) { return }
                 }
+                let panelWindow = self.popover.contentViewController?.view.window
+                if NSApp.windows.contains(where: {
+                       $0 !== panelWindow && $0.isVisible && $0.frame.contains(clickLocation)
+                   }) { return }
                 self.dismissPopover()
             }
         }

@@ -2,6 +2,13 @@
 
 Quit a group of Mac apps without hunting through the Dock. Pick from what's running, or save a profile for a routine you repeat. QuitBatch lives in the menu bar and first asks apps to quit normally.
 
+## New in 2.0
+
+- Eject external drives and installer disk images from **Drives**. If a disk is busy, inspect visible blocking processes, close selected apps, and retry. **Force Eject** is a separate, confirmed action.
+- Arrange **Apps**, **Profiles**, and **Drives** by dragging the tabs. The **Customize Sections** command can also reorder or hide them. Use the button beside **Sort by** to drag **Name**, **CPU**, and **Memory** into your preferred order.
+- The dragged item stays solid above the others while they slide into its place. The order is saved when you release it, and the selected sort mode is remembered when the panel reopens.
+- Profiles offer 40 symbols. Settings keeps a compact layout beside the panel, and QuitBatch can show a notice when a newer public release is available.
+
 <img src="Assets/Screenshots/desktop-mockup.jpg" alt="QuitBatch on an illustrative desktop" width="900">
 
 *Illustrative desktop with a real QuitBatch demo interface. The screenshots use a sample “Focus Session” profile and common macOS apps, with no personal app list or documents.*
@@ -10,25 +17,31 @@ Quit a group of Mac apps without hunting through the Dock. Pick from what's runn
 
 ### Close what's open
 
-Open **Open Apps**, search by app name, and tick the apps you want to quit. Sort the list by name, recent CPU use, or memory footprint to find busy apps quickly. **Select All** and **Deselect All** work on the current search results. QuitBatch shows running instances and distinct apps separately. Protected apps, including Finder, QuitBatch itself, and LockDown Browser, cannot be selected.
+Open **Apps**, search by app name, and tick the apps you want to quit. Sort the list by name, recent CPU use, or memory footprint to find busy apps quickly. **Select All** and **Deselect All** work on the current search results. QuitBatch shows running instances and distinct apps separately. Protected apps, including Finder, QuitBatch itself, and LockDown Browser, cannot be selected.
 
 <img src="Assets/Screenshots/open-apps.png" alt="Open Apps with common macOS apps and two selected" width="620">
 
 ### Save a routine
 
-Profiles have two lists: **Close** and **Keep Open**. Add apps from the running list or choose an app bundle. You can fold either list away, edit the profile's name, choose its icon and accent, and duplicate or delete it from the More menu. The profile card shows what it would close, keep open, and protect right now. These counts may differ from the number of saved rules because one app can have multiple running instances.
+Profiles have two lists: **Close** and **Keep Open**. Add apps from the running list or choose an app bundle. You can fold either list away, edit the profile's name, choose from 40 symbols, set an accent, and duplicate or delete it from the More menu. The profile card shows what it would close, keep open, and protect right now. These counts may differ from the number of saved rules because one app can have multiple running instances.
 
 Turn on **Include newly detected apps** if anything you haven't listed under Keep Open should also close. You can show or hide the profile list when you have more than one profile. The included **Exam Mode** is an editable example, not a preset you have to use.
 
 <img src="Assets/Screenshots/profiles.png" alt="Sample profile with Close and Keep Open sections" width="620">
 
+### Eject a drive
+
+**Drives** lists mounted external disks and disk images, including the temporary volumes left by app installers. Eject normally with one click. If macOS says a drive is busy, QuitBatch lists processes it can see using that disk and, when available, a file they have open. Select app processes to quit normally, then retry. A separate **Force Eject** action appears after a failed attempt and asks for confirmation, since an active write can damage data. Some system processes cannot be closed from QuitBatch, and macOS may not expose every blocker.
+
 ### Reach it from the menu bar
 
 Click the menu bar symbol to open or close the panel. Clicking outside also dismisses it. The opening fade is brief and respects Reduce Motion. Option-click the symbol for a menu of saved profiles, or record a keyboard shortcut in Settings. Drag the visible grip in the panel's lower-right corner to resize it; the size is saved. The default panel is compact, and Settings can restore that size.
 
+Drag **Apps**, **Profiles**, or **Drives** to change their order. Option-click the menu bar symbol and choose **Customize Sections** to reorder or hide tabs; hidden tabs can be restored there. That menu also has **Open Drives**.
+
 ### Make it yours
 
-Settings opens beside the main panel at a smaller size. The **Keep panel open with Settings** switch is on by default; turn it off if you prefer the panel to close when Settings opens. Settings has system, light, and dark appearance; a choice of menu bar symbols; and a custom accent hue. **Darken color** adjusts the accent from 0 to 100% without dimming the window background. The Layout section sets icon sizes separately for Open Apps and Profiles, with a smaller default for both. You can also change the glass transparency, show or hide the profile list, launch at login, require confirmation before quitting apps, and quit QuitBatch itself. The Settings window can be resized within compact limits.
+Settings opens beside the main panel at a smaller size. The **Keep panel open with Settings** switch is on by default; turn it off if you prefer the panel to close when Settings opens. Settings has system, light, and dark appearance; a choice of menu bar symbols; and a custom accent hue. **Darken color** adjusts the accent from 0 to 100% without dimming the window background. The Layout section sets icon sizes separately for Apps and Profiles. Both use the same Small, Medium, and Large scale, with Small as the default. You can also change the glass transparency, show or hide the profile list, launch at login, require confirmation before quitting apps, and quit QuitBatch itself. The Settings window can be resized within compact limits. When a newer public release is available, QuitBatch shows a small notice at the bottom of the panel with a link to its release page. Dismissing one release does not hide later versions.
 
 <img src="Assets/Screenshots/settings.png" alt="General and layout settings with small icons selected" width="600">
 
@@ -42,10 +55,12 @@ QuitBatch targets macOS 14 or later on Apple silicon. With Xcode command line to
 
 ```sh
 Scripts/test.sh
+Scripts/test_drives.sh
 Scripts/build.sh
 ```
 
 The build script prints the location of the signed app bundle in the temporary build directory. The bundle identifier remains `com.vladikmartinez.appcloser` so existing settings and profiles keep working after the name change. Saved state remains in the `App Closer` Application Support folder.
+The drive test creates and ejects a disposable disk image. It does not eject connected user drives.
 
 ## License
 

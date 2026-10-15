@@ -1,10 +1,40 @@
 import AppKit
+import Combine
 import Foundation
 
 @main
 struct PolicyTests {
     @MainActor static func main() throws {
         _ = NSApplication.shared
+        let versionCases: [(String, String, Bool)] = [
+            ("v2.1", "2.0", true), ("2.0.1", "2.0", true),
+            ("2.1", "2.0.9", true), ("2.0", "2.0.0", false),
+            ("1.9.9", "2.0", false), ("v2.0", "2.0", false),
+            ("2.0.0", "2.0", false), ("2.0", "2.1", false),
+            ("3", "2.9.9", true), ("v2.1.0", "2.0", true),
+            ("2.1-beta", "2.0", false), ("", "2.0", false),
+            ("2..1", "2.0", false), ("2.1", "bad", false),
+            ("999999999999999999999", "2.0", false), ("2.0.0.1", "2.0", true),
+            ("2.0.0.0.1", "2.0", false), ("V2.2", "2.1", true),
+            (" 2.1 ", "2.0", true), ("2.1", "2.1.0", false)
+        ]
+        for (candidate, installed, expected) in versionCases {
+            precondition(ReleaseVersion.isNewer(candidate, than: installed) == expected,
+                         "Unexpected update comparison: \(candidate), \(installed)")
+        }
+        let publishedRelease = Data(#"{"tag_name":"v2.1","draft":false,"prerelease":false}"#.utf8)
+        precondition(UpdateChecker.availableRelease(from: publishedRelease, installedVersion: "2.0",
+                                                    dismissedTag: nil)?.tag == "v2.1")
+        precondition(UpdateChecker.availableRelease(from: publishedRelease, installedVersion: "2.1",
+                                                    dismissedTag: nil) == nil)
+        precondition(UpdateChecker.availableRelease(from: publishedRelease, installedVersion: "2.0",
+                                                    dismissedTag: "v2.1") == nil)
+        precondition(UpdateChecker.availableRelease(from: Data(#"{"tag_name":"v2.2","draft":true,"prerelease":false}"#.utf8),
+                                                    installedVersion: "2.0", dismissedTag: nil) == nil)
+        precondition(UpdateChecker.availableRelease(from: Data(#"{"tag_name":"v2.2","draft":false,"prerelease":true}"#.utf8),
+                                                    installedVersion: "2.0", dismissedTag: nil) == nil)
+        precondition(UpdateChecker.availableRelease(from: Data("bad response".utf8),
+                                                    installedVersion: "2.0", dismissedTag: nil) == nil)
         let original = SavedState.initial()
         precondition(original.profiles.count == 1)
         precondition(original.profiles[0].name == "Exam Mode")
@@ -14,12 +44,45 @@ struct PolicyTests {
         precondition(migrated.useGlass && migrated.windowTransparency == 0.08)
         precondition(!migrated.forceQuitUnresponsiveApps)
         precondition(migrated.openAppsIconSize == .small && migrated.profilesIconSize == .small)
+        precondition(migrated.sectionOrder == PanelSection.allCases && migrated.hiddenSections.isEmpty)
+        precondition(migrated.appSortMode == .name && migrated.appSortOrder == AppSortMode.allCases)
+        let customSort = try JSONDecoder().decode(Preferences.self,
+            from: Data(#"{"appSortMode":"memory","appSortOrder":["memory","cpu","memory"]}"#.utf8))
+        precondition(customSort.appSortMode == .memory)
+        precondition(customSort.appSortOrder == [.memory, .cpu, .name])
+        let invalidSort = try JSONDecoder().decode(Preferences.self,
+            from: Data(#"{"appSortMode":"invalid","appSortOrder":["unknown"]}"#.utf8))
+        precondition(invalidSort.appSortMode == .name && invalidSort.appSortOrder == AppSortMode.allCases)
+        precondition(ReorderMath.destination(startIndex: 1, translation: 18, pitch: 44, count: 3) == 1)
+        precondition(ReorderMath.destination(startIndex: 1, translation: 24, pitch: 44, count: 3) == 2)
+        precondition(ReorderMath.destination(startIndex: 1, translation: -24, pitch: 44, count: 3) == 0)
+        precondition(ReorderMath.destination(startIndex: 0, translation: 500, pitch: 44, count: 3) == 2)
+        precondition(ReorderMath.destination(startIndex: 2, translation: -500, pitch: 44, count: 3) == 0)
+        precondition(ReorderMath.clampedTranslation(500, from: 0, pitch: 44, count: 3) == 88)
+        precondition(ReorderMath.clampedTranslation(-500, from: 2, pitch: 44, count: 3) == -88)
+        precondition(ReorderMath.shift(index: 1, from: 0, to: 2, pitch: 44) == -44)
+        precondition(ReorderMath.shift(index: 2, from: 0, to: 2, pitch: 44) == -44)
+        precondition(ReorderMath.shift(index: 0, from: 2, to: 0, pitch: 44) == 44)
+        precondition(ReorderMath.shift(index: 1, from: 2, to: 0, pitch: 44) == 44)
+        precondition(ReorderMath.shift(index: 2, from: 2, to: 0, pitch: 44) == 0)
+        let customSections = try JSONDecoder().decode(Preferences.self,
+            from: Data(#"{"sectionOrder":["drives","profiles","drives"],"hiddenSections":["openApps"]}"#.utf8))
+        precondition(customSections.sectionOrder == [.drives, .profiles, .openApps])
+        precondition(customSections.hiddenSections == [.openApps])
+        let allHidden = try JSONDecoder().decode(Preferences.self,
+            from: Data(#"{"hiddenSections":["openApps","profiles","drives"]}"#.utf8))
+        precondition(!allHidden.hiddenSections.contains(.openApps))
         let iconSettings = try JSONDecoder().decode(Preferences.self,
             from: Data(#"{"openAppsIconSize":"medium","profilesIconSize":"large"}"#.utf8))
         precondition(iconSettings.openAppsIconSize == .medium && iconSettings.profilesIconSize == .large)
         let invalidIconSettings = try JSONDecoder().decode(Preferences.self,
             from: Data(#"{"openAppsIconSize":"unknown"}"#.utf8))
         precondition(invalidIconSettings.openAppsIconSize == .small)
+        precondition(IconSizeOption.allCases.map(\.artwork) == [20, 26, 32])
+        for option in IconSizeOption.allCases {
+            precondition(option.badge == option.artwork + 12)
+        }
+        precondition(ChromeIconMetrics.brand == IconSizeOption.medium.artwork)
         let forceQuitSettings = try JSONDecoder().decode(Preferences.self,
             from: Data(#"{"forceQuitUnresponsiveApps":true}"#.utf8))
         precondition(forceQuitSettings.forceQuitUnresponsiveApps)
@@ -73,6 +136,10 @@ struct PolicyTests {
             }
         }
         precondition(migrated.windowWidth == 400 && migrated.windowHeight == 500)
+        precondition(SettingsWindowLayout.contentSize(in: CGRect(x: 0, y: 0, width: 1200, height: 800)) ==
+                     CGSize(width: 360, height: 450))
+        precondition(SettingsWindowLayout.contentSize(in: CGRect(x: 0, y: 0, width: 800, height: 430)) ==
+                     CGSize(width: 360, height: 394))
         let display = CGRect(x: 0, y: 0, width: 1200, height: 800)
         let leftPlacement = WindowPlacement.beside(CGRect(x: 820, y: 250, width: 360, height: 480),
                                                    size: CGSize(width: 400, height: 510), in: display)
@@ -107,6 +174,7 @@ struct PolicyTests {
         precondition(oversizedPlacement == narrowDisplay)
         precondition(migrated.menuBarSymbol == "appcloser")
         precondition(Set(SymbolCatalog.profileChoices.map(\.id)).count == SymbolCatalog.profileChoices.count)
+        precondition(Set(SymbolCatalog.profileChoices.map(\.title)).count == SymbolCatalog.profileChoices.count)
         precondition(Set(SymbolCatalog.menuBarChoices.map(\.id)).count == SymbolCatalog.menuBarChoices.count)
         precondition(SymbolCatalog.profileChoices.allSatisfy { NSImage(systemSymbolName: $0.id, accessibilityDescription: nil) != nil })
         precondition(SymbolCatalog.menuBarChoices.filter { $0.id != "appcloser" }
@@ -128,6 +196,20 @@ struct PolicyTests {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("AppCloserTests-\(UUID())")
         let store = StateStore(url: directory.appendingPathComponent("state.json"))
         defer { try? FileManager.default.removeItem(at: directory) }
+        let unreadableStore = StateStore(url: directory.appendingPathComponent("unreadable.json"))
+        let unreadableData = Data("{unreadable state".utf8)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try unreadableData.write(to: unreadableStore.url)
+        do {
+            _ = try unreadableStore.load()
+            preconditionFailure("Malformed state should not decode")
+        } catch {
+            let backups = try FileManager.default.contentsOfDirectory(at: directory,
+                includingPropertiesForKeys: nil).filter { $0.lastPathComponent.hasPrefix("state-unreadable-") }
+            precondition(backups.count == 1)
+            let backedUpData = try Data(contentsOf: backups[0])
+            precondition(backedUpData == unreadableData)
+        }
         var state = original
         state.profiles.append(profile)
         state.preferences.shortcut = Shortcut(keyCode: 0, modifiers: 0, label: "Test")
@@ -141,6 +223,26 @@ struct PolicyTests {
         precondition(loaded.restorableApps == state.restorableApps)
 
         let model = AppModel(store: store)
+        model.selectAppSortMode(.cpu)
+        model.moveAppSortMode(.memory, to: 0)
+        precondition(model.state.preferences.appSortMode == .cpu)
+        precondition(model.state.preferences.appSortOrder == [.memory, .name, .cpu])
+        let savedSort = try store.load().preferences
+        precondition(savedSort.appSortMode == .cpu && savedSort.appSortOrder == [.memory, .name, .cpu])
+        precondition(model.visibleSections == PanelSection.allCases)
+        model.moveSection(.drives, to: 0)
+        precondition(model.visibleSections == [.drives, .openApps, .profiles])
+        model.setSectionVisible(.openApps, visible: false)
+        precondition(model.visibleSections == [.drives, .profiles])
+        model.setSectionVisible(.profiles, visible: false)
+        model.setSectionVisible(.drives, visible: false)
+        precondition(model.visibleSections == [.drives])
+        model.setSectionVisible(.openApps, visible: true)
+        precondition(model.visibleSections == [.drives, .openApps])
+        let savedSections = try store.load().preferences.sectionOrder
+        precondition(savedSections == [.drives, .openApps, .profiles])
+        let fakeDrive = EjectableDrive(id: "disk4;rm -rf /", name: "Invalid", mountPoints: ["/Volumes/Invalid"], isDiskImage: false)
+        precondition(!DiskUtility.eject(fakeDrive, force: false).succeeded)
         model.setAccentHue(0.74, persist: true)
         let savedAccent = try store.load().preferences
         precondition(savedAccent.useCustomAccent && savedAccent.customAccentHue == 0.74)
@@ -153,6 +255,11 @@ struct PolicyTests {
         model.updatePreferences { $0.openAppsIconSize = .large; $0.profilesIconSize = .medium }
         let savedIconSizes = try store.load().preferences
         precondition(savedIconSizes.openAppsIconSize == .large && savedIconSizes.profilesIconSize == .medium)
+        var preferenceRedraws = 0
+        let preferenceObserver = model.objectWillChange.sink { preferenceRedraws += 1 }
+        model.updatePreferences { $0.openAppsIconSize = .large }
+        precondition(preferenceRedraws == 0)
+        withExtendedLifetime(preferenceObserver) {}
         var keepPanelEvents: [Bool] = []
         model.onKeepPanelWithSettingsChanged = { keepPanelEvents.append($0) }
         model.updatePreferences { $0.keepPanelOpenWithSettings = false }

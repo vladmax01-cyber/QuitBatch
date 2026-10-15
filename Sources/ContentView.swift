@@ -87,6 +87,8 @@ private enum Palette {
 
 struct ContentView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject private var updates = UpdateChecker.shared
+    @StateObject private var drives = DriveManager()
     let openSettings: () -> Void
     let closePanel: () -> Void
     @State private var resizeStart: (mouse: NSPoint, size: CGSize, translation: CGSize)?
@@ -95,45 +97,66 @@ struct ContentView: View {
     @State private var lastResizeUpdate = 0.0
     @State private var closeExpanded = true
     @State private var keepExpanded = true
+    @State private var draggingNavigationSection: PanelSection?
+    @State private var navigationDragStartIndex: Int?
+    @State private var navigationDragTargetIndex: Int?
+    @State private var navigationDragTranslation: CGFloat = 0
+    @State private var navigationDragSettling = false
+
+    private let sectionMovement = Animation.spring(response: 0.30, dampingFraction: 0.86)
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            navigation
-            Divider().padding(.horizontal, 18)
-            Group {
-                switch model.section {
-                case .openApps: OpenAppsView(model: model)
-                case .profiles: ProfilesView(model: model, closeExpanded: $closeExpanded,
-                                             keepExpanded: $keepExpanded)
-                }
-            }
-            if model.message != nil || model.pendingForceQuitCount > 0 {
-                VStack(alignment: .leading, spacing: 8) {
-                    if let message = model.message {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "info.circle").foregroundStyle(Palette.accentForeground(model.state.preferences))
-                            Text(message).fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 0)
-                            Button { model.message = nil } label: { Image(systemName: "xmark") }
-                                .buttonStyle(.plain).accessibilityLabel("Dismiss message")
-                        }
-                    }
-                    if model.pendingForceQuitCount > 0 {
-                        Button { model.forceQuitRemaining() } label: {
-                            Label("Force Quit \(model.pendingForceQuitCount) Remaining", systemImage: "exclamationmark.triangle")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .tint(.red)
-                        .disabled(model.busy)
-                        .help("Force quit apps from the last run that are still open. Unsaved changes may be lost.")
+            if model.customizingSections {
+                Divider().padding(.horizontal, 18)
+                SectionCustomizer(model: model)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                Spacer(minLength: 0)
+            } else {
+                navigation
+                Divider().padding(.horizontal, 18)
+                Group {
+                    switch model.section {
+                    case .openApps: OpenAppsView(model: model)
+                    case .profiles: ProfilesView(model: model, closeExpanded: $closeExpanded,
+                                                 keepExpanded: $keepExpanded)
+                    case .drives: DrivesView(manager: drives,
+                                             confirmBeforeQuitting: model.state.preferences.confirmBeforeQuitting)
                     }
                 }
-                .font(.caption)
-                .padding(12)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
-                .padding([.horizontal, .bottom], 14)
+                if model.message != nil || model.pendingForceQuitCount > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let message = model.message {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "info.circle").foregroundStyle(Palette.accentForeground(model.state.preferences))
+                                Text(message).fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                                Button { model.message = nil } label: { Image(systemName: "xmark") }
+                                    .buttonStyle(.plain).accessibilityLabel("Dismiss message")
+                            }
+                        }
+                        if model.pendingForceQuitCount > 0 {
+                            Button { model.forceQuitRemaining() } label: {
+                                Label("Force Quit \(model.pendingForceQuitCount) Remaining", systemImage: "exclamationmark.triangle")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .tint(.red)
+                            .disabled(model.busy)
+                            .help("Force quit apps from the last run that are still open. Unsaved changes may be lost.")
+                        }
+                    }
+                    .font(.caption)
+                    .padding(12)
+                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+                    .padding([.horizontal, .bottom], 14)
+                }
+                if let release = updates.availableRelease {
+                    UpdateNotice(release: release, preferences: model.state.preferences,
+                                 dismiss: { updates.dismiss() })
+                    .transition(.opacity)
+                }
             }
         }
         .frame(width: model.state.preferences.windowWidth, height: model.state.preferences.windowHeight)
@@ -141,13 +164,14 @@ struct ContentView: View {
                                     enabled: model.state.preferences.useGlass))
         .preferredColorScheme(colorScheme)
         .tint(Palette.accentForeground(model.state.preferences))
+        .animation(.easeInOut(duration: 0.18), value: model.customizingSections)
+        .animation(.easeInOut(duration: 0.18), value: updates.availableRelease)
         .overlay(alignment: .bottomTrailing) {
-            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.secondary.opacity(0.8))
+            Color.clear
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
                 .help("Drag to resize the panel")
+                .accessibilityElement()
                 .accessibilityLabel("Resize QuitBatch")
                 .accessibilityValue("\(Int(model.state.preferences.windowWidth)) by \(Int(model.state.preferences.windowHeight)) points")
                 .accessibilityAdjustableAction { direction in
@@ -210,23 +234,23 @@ struct ContentView: View {
                 .resizable()
                 .scaledToFit()
                 .foregroundStyle(Palette.accentForeground(model.state.preferences))
-                .frame(width: 26, height: 26)
+                .frame(width: ChromeIconMetrics.brand, height: ChromeIconMetrics.brand)
                 .frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text("QuitBatch").font(.system(size: 18, weight: .semibold))
-                Text("Quit apps and save profiles")
+                Text("Apps, profiles, and drives")
                     .font(.caption).foregroundStyle(Palette.muted)
             }
             Spacer()
-            Button { model.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 17)) }
+            Button { model.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: ChromeIconMetrics.action)) }
                 .buttonStyle(.borderless)
                 .help("Refresh running apps")
                 .accessibilityLabel("Refresh running apps")
-            Button(action: openSettings) { Image(systemName: "gearshape").font(.system(size: 17)) }
+            Button(action: openSettings) { Image(systemName: "gearshape").font(.system(size: ChromeIconMetrics.action)) }
                 .buttonStyle(.borderless)
                 .help("Open Settings")
                 .accessibilityLabel("Open Settings")
-            Button(action: closePanel) { Image(systemName: "xmark").font(.system(size: 17)) }
+            Button(action: closePanel) { Image(systemName: "xmark").font(.system(size: ChromeIconMetrics.action)) }
                 .buttonStyle(.borderless)
                 .help("Close QuitBatch panel")
                 .accessibilityLabel("Close QuitBatch panel")
@@ -236,31 +260,420 @@ struct ContentView: View {
         .padding(.bottom, 15)
     }
 
+    private func dragNavigation(_ value: DragGesture.Value, pitch: CGFloat) {
+        let visible = model.visibleSections
+        guard visible.count > 1, !navigationDragSettling else { return }
+        if draggingNavigationSection == nil {
+            let start = min(visible.count - 1, max(0, Int((value.startLocation.x - 4) / pitch)))
+            draggingNavigationSection = visible[start]
+            navigationDragStartIndex = start
+            navigationDragTargetIndex = start
+        }
+        guard let start = navigationDragStartIndex else { return }
+        navigationDragTranslation = ReorderMath.clampedTranslation(value.translation.width,
+                                                                    from: start, pitch: pitch, count: visible.count)
+        let destination = ReorderMath.destination(startIndex: start,
+                                                  translation: navigationDragTranslation, pitch: pitch,
+                                                  count: visible.count)
+        if destination != navigationDragTargetIndex {
+            withAnimation(sectionMovement) { navigationDragTargetIndex = destination }
+        }
+    }
+
+    private func finishNavigationDrag(pitch: CGFloat) {
+        guard let section = draggingNavigationSection,
+              let start = navigationDragStartIndex,
+              let destination = navigationDragTargetIndex else { return }
+        navigationDragSettling = true
+        withAnimation(sectionMovement) {
+            navigationDragTranslation = CGFloat(destination - start) * pitch
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if destination != start {
+                    let visible = model.visibleSections
+                    if visible.indices.contains(destination),
+                       let fullIndex = model.state.preferences.sectionOrder.firstIndex(of: visible[destination]) {
+                        model.moveSection(section, to: fullIndex)
+                    }
+                }
+                draggingNavigationSection = nil
+                navigationDragStartIndex = nil
+                navigationDragTargetIndex = nil
+                navigationDragTranslation = 0
+                navigationDragSettling = false
+            }
+        }
+    }
+
     private var navigation: some View {
-        HStack(spacing: 5) {
-            ForEach(AppModel.Section.allCases) { section in
+        GeometryReader { geometry in
+          let visible = model.visibleSections
+          let pitch = (geometry.size.width - 8 - CGFloat(max(0, visible.count - 1)) * 5)
+              / CGFloat(max(1, visible.count)) + 5
+          HStack(spacing: 5) {
+            ForEach(Array(visible.enumerated()), id: \.element) { index, section in
                 Button {
                     model.section = section
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: section.symbol).font(.system(size: 16))
-                        Text(section.rawValue)
+                    HStack(spacing: 5) {
+                        Image(systemName: section.symbol).font(.system(size: ChromeIconMetrics.section))
+                        Text(section.title)
                             .font(.system(size: 13, weight: model.section == section ? .semibold : .medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.86)
                     }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
-                        .background(model.section == section ? Color.primary.opacity(0.09) : .clear,
-                                    in: RoundedRectangle(cornerRadius: 9))
+                        .background {
+                            RoundedRectangle(cornerRadius: 9)
+                                .fill(draggingNavigationSection == section
+                                      ? Color(nsColor: .windowBackgroundColor) : .clear)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 9)
+                                        .fill(model.section == section ? Color.primary.opacity(0.09) : .clear)
+                                }
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 9)
+                                        .strokeBorder(Color.primary.opacity(draggingNavigationSection == section ? 0.16 : 0),
+                                                      lineWidth: 1)
+                                }
+                        }
                         .contentShape(RoundedRectangle(cornerRadius: 9))
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(model.section == section ? .isSelected : [])
+                .offset(x: draggingNavigationSection == section ? navigationDragTranslation
+                        : navigationDragStartIndex.flatMap { source in
+                            navigationDragTargetIndex.map { destination in
+                                ReorderMath.shift(index: index, from: source, to: destination, pitch: pitch)
+                            }
+                        } ?? 0)
+                .zIndex(draggingNavigationSection == section ? 2 : 0)
+                .shadow(color: .black.opacity(draggingNavigationSection == section ? 0.22 : 0),
+                        radius: 7, y: 3)
+                .transaction { transaction in
+                    if draggingNavigationSection == section && !navigationDragSettling {
+                        transaction.animation = nil
+                    }
+                }
+                .help("Drag to reorder sections")
             }
+          }
+          .padding(4)
+          .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+          .contentShape(RoundedRectangle(cornerRadius: 12))
+          .simultaneousGesture(
+              DragGesture(minimumDistance: 6)
+                  .onChanged { dragNavigation($0, pitch: pitch) }
+                  .onEnded { _ in finishNavigationDrag(pitch: pitch) }
+          )
+          .animation(sectionMovement, value: navigationDragTargetIndex)
         }
-        .padding(4)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+        .frame(height: 44)
         .padding(.horizontal, 16)
         .padding(.bottom, 14)
+    }
+}
+
+struct UpdateNotice: View {
+    let release: AvailableRelease
+    let preferences: Preferences
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 16))
+                .foregroundStyle(Palette.accentForeground(preferences))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Update available").font(.caption.weight(.semibold))
+                Text("QuitBatch \(release.tag)").font(.caption2).foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Button("View") { NSWorkspace.shared.open(release.url) }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("View QuitBatch \(release.tag) release")
+                .help("Open release page")
+            Button(action: dismiss) { Image(systemName: "xmark") }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Dismiss update notice")
+                .help("Dismiss this version")
+        }
+        .padding(11)
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+}
+
+private struct SectionCustomizer: View {
+    @ObservedObject var model: AppModel
+    @State private var draggingSection: PanelSection?
+    @State private var dragStartIndex: Int?
+    @State private var dragTargetIndex: Int?
+    @State private var dragTranslation: CGFloat = 0
+    @State private var dragSettling = false
+
+    private let movement = Animation.spring(response: 0.30, dampingFraction: 0.86)
+    private let rowPitch: CGFloat = 44
+
+    private func move(_ section: PanelSection, to destination: Int) {
+        guard !dragSettling, let start = model.state.preferences.sectionOrder.firstIndex(of: section) else { return }
+        draggingSection = section
+        dragStartIndex = start
+        dragTargetIndex = destination
+        settleDrag()
+    }
+
+    private func drag(_ value: DragGesture.Value) {
+        let order = model.state.preferences.sectionOrder
+        guard !order.isEmpty, !dragSettling else { return }
+        if draggingSection == nil {
+            let start = min(order.count - 1, max(0, Int(value.startLocation.y / rowPitch)))
+            guard value.startLocation.y - CGFloat(start) * rowPitch <= 32 else { return }
+            draggingSection = order[start]
+            dragStartIndex = start
+            dragTargetIndex = start
+        }
+        guard let dragStartIndex else { return }
+        dragTranslation = ReorderMath.clampedTranslation(value.translation.height,
+                                                        from: dragStartIndex, pitch: rowPitch, count: order.count)
+        let destination = ReorderMath.destination(startIndex: dragStartIndex,
+                                                  translation: dragTranslation, pitch: rowPitch,
+                                                  count: order.count)
+        if destination != dragTargetIndex {
+            withAnimation(movement) { dragTargetIndex = destination }
+        }
+    }
+
+    private func settleDrag() {
+        guard let section = draggingSection,
+              let start = dragStartIndex,
+              let destination = dragTargetIndex else { return }
+        dragSettling = true
+        withAnimation(movement) {
+            dragTranslation = CGFloat(destination - start) * rowPitch
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if destination != start { model.moveSection(section, to: destination) }
+                draggingSection = nil
+                dragStartIndex = nil
+                dragTargetIndex = nil
+                dragTranslation = 0
+                dragSettling = false
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Sections").font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Button("Done") { model.customizingSections = false }
+                    .buttonStyle(.borderless)
+            }
+            Text("Drag to reorder or hide a section.")
+                .font(.caption).foregroundStyle(.secondary)
+            VStack(spacing: 12) {
+              ForEach(Array(model.state.preferences.sectionOrder.enumerated()), id: \.element) { index, section in
+                HStack(spacing: 9) {
+                    Image(systemName: "line.3.horizontal")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Image(systemName: section.symbol)
+                        .frame(width: 19)
+                    Text(section.title)
+                    Spacer()
+                    Toggle(section.title, isOn: Binding(
+                        get: { !model.state.preferences.hiddenSections.contains(section) },
+                        set: { model.setSectionVisible(section, visible: $0) }
+                    ))
+                    .labelsHidden()
+                    .disabled(model.visibleSections.count == 1 &&
+                              !model.state.preferences.hiddenSections.contains(section))
+                }
+                .frame(height: 32)
+                .padding(.horizontal, 9)
+                .background {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                        .overlay(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.055)))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.primary.opacity(draggingSection == section ? 0.16 : 0), lineWidth: 1))
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityElement(children: .contain)
+                .accessibilityAction(named: "Move up") {
+                    guard let index = model.state.preferences.sectionOrder.firstIndex(of: section), index > 0 else { return }
+                    move(section, to: index - 1)
+                }
+                .accessibilityAction(named: "Move down") {
+                    guard let index = model.state.preferences.sectionOrder.firstIndex(of: section),
+                          index < model.state.preferences.sectionOrder.count - 1 else { return }
+                    move(section, to: index + 1)
+                }
+                .offset(y: draggingSection == section ? dragTranslation
+                        : dragStartIndex.flatMap { source in
+                            dragTargetIndex.map { destination in
+                                ReorderMath.shift(index: index, from: source, to: destination, pitch: rowPitch)
+                            }
+                        } ?? 0)
+                .zIndex(draggingSection == section ? 2 : 0)
+                .shadow(color: .black.opacity(draggingSection == section ? 0.22 : 0), radius: 7, y: 3)
+                .transaction { transaction in
+                    if draggingSection == section && !dragSettling { transaction.animation = nil }
+                }
+              }
+            }
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { drag($0) }
+                    .onEnded { _ in settleDrag() }
+            )
+        }
+        .animation(movement, value: dragTargetIndex)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct SortOrderCustomizer: View {
+    @ObservedObject var model: AppModel
+    @Binding var isPresented: Bool
+    @State private var draggingMode: AppSortMode?
+    @State private var dragStartIndex: Int?
+    @State private var dragTargetIndex: Int?
+    @State private var dragTranslation: CGFloat = 0
+    @State private var dragSettling = false
+
+    private let movement = Animation.spring(response: 0.30, dampingFraction: 0.86)
+    private let rowPitch: CGFloat = 39
+
+    private func move(_ mode: AppSortMode, to destination: Int) {
+        guard !dragSettling, let start = model.state.preferences.appSortOrder.firstIndex(of: mode) else { return }
+        draggingMode = mode
+        dragStartIndex = start
+        dragTargetIndex = destination
+        settleDrag()
+    }
+
+    private func drag(_ value: DragGesture.Value) {
+        let order = model.state.preferences.appSortOrder
+        guard !order.isEmpty, !dragSettling else { return }
+        if draggingMode == nil {
+            let start = min(order.count - 1, max(0, Int(value.startLocation.y / rowPitch)))
+            guard value.startLocation.y - CGFloat(start) * rowPitch <= 32 else { return }
+            draggingMode = order[start]
+            dragStartIndex = start
+            dragTargetIndex = start
+        }
+        guard let dragStartIndex else { return }
+        dragTranslation = ReorderMath.clampedTranslation(value.translation.height,
+                                                        from: dragStartIndex, pitch: rowPitch, count: order.count)
+        let destination = ReorderMath.destination(startIndex: dragStartIndex,
+                                                  translation: dragTranslation, pitch: rowPitch,
+                                                  count: order.count)
+        if destination != dragTargetIndex {
+            withAnimation(movement) { dragTargetIndex = destination }
+        }
+    }
+
+    private func settleDrag() {
+        guard let mode = draggingMode,
+              let start = dragStartIndex,
+              let destination = dragTargetIndex else { return }
+        dragSettling = true
+        withAnimation(movement) {
+            dragTranslation = CGFloat(destination - start) * rowPitch
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if destination != start { model.moveAppSortMode(mode, to: destination) }
+                draggingMode = nil
+                dragStartIndex = nil
+                dragTargetIndex = nil
+                dragTranslation = 0
+                dragSettling = false
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("Button order").font(.subheadline.weight(.semibold))
+                Spacer()
+                Button("Done") { withAnimation(.easeInOut(duration: 0.18)) { isPresented = false } }
+                    .buttonStyle(.borderless)
+            }
+            Text("Drag to rearrange the sort buttons.")
+                .font(.caption).foregroundStyle(.secondary)
+            VStack(spacing: 7) {
+              ForEach(Array(model.state.preferences.appSortOrder.enumerated()), id: \.element) { index, mode in
+                HStack(spacing: 9) {
+                    Image(systemName: "line.3.horizontal")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(mode.title)
+                    Spacer()
+                }
+                .frame(height: 32)
+                .padding(.horizontal, 9)
+                .background {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                        .overlay(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.055)))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.primary.opacity(draggingMode == mode ? 0.16 : 0), lineWidth: 1))
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityElement(children: .contain)
+                .accessibilityAction(named: "Move up") {
+                    guard let index = model.state.preferences.appSortOrder.firstIndex(of: mode), index > 0 else { return }
+                    move(mode, to: index - 1)
+                }
+                .accessibilityAction(named: "Move down") {
+                    guard let index = model.state.preferences.appSortOrder.firstIndex(of: mode),
+                          index < model.state.preferences.appSortOrder.count - 1 else { return }
+                    move(mode, to: index + 1)
+                }
+                .offset(y: draggingMode == mode ? dragTranslation
+                        : dragStartIndex.flatMap { source in
+                            dragTargetIndex.map { destination in
+                                ReorderMath.shift(index: index, from: source, to: destination, pitch: rowPitch)
+                            }
+                        } ?? 0)
+                .zIndex(draggingMode == mode ? 2 : 0)
+                .shadow(color: .black.opacity(draggingMode == mode ? 0.22 : 0), radius: 7, y: 3)
+                .transaction { transaction in
+                    if draggingMode == mode && !dragSettling { transaction.animation = nil }
+                }
+              }
+            }
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { drag($0) }
+                    .onEnded { _ in settleDrag() }
+            )
+        }
+        .animation(movement, value: dragTargetIndex)
+        .padding(12)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 20)
+        .padding(.bottom, 10)
     }
 }
 
@@ -268,12 +681,9 @@ private struct OpenAppsView: View {
     @ObservedObject var model: AppModel
     @State private var showResults = false
     @State private var searchText = ""
-    @State private var sortMode: SortMode = .name
+    @State private var customizingSort = false
 
-    private enum SortMode: String, CaseIterable, Identifiable {
-        case name = "Name", cpu = "CPU", memory = "Memory"
-        var id: String { rawValue }
-    }
+    private var sortMode: AppSortMode { model.state.preferences.appSortMode }
 
     private var visibleApps: [RunningApp] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -322,7 +732,7 @@ private struct OpenAppsView: View {
                 }
                 Spacer()
                 Button("Select All") { model.select(visibleApps) }
-                    .disabled(visibleApps.allSatisfy(\.protected) || model.busy)
+                    .disabled(visibleSelectedCount == visibleApps.filter { !$0.protected }.count || model.busy)
                 Button("Deselect All") { model.deselect(visibleApps) }
                     .disabled(visibleSelectedCount == 0 || model.busy)
             }
@@ -351,51 +761,78 @@ private struct OpenAppsView: View {
 
             HStack(spacing: 10) {
                 Text("Sort by").font(.caption).foregroundStyle(.secondary)
-                Picker("Sort running apps", selection: $sortMode) {
-                    ForEach(SortMode.allCases) { mode in Text(mode.rawValue).tag(mode) }
+                Picker("Sort running apps", selection: Binding(
+                    get: { model.state.preferences.appSortMode },
+                    set: { model.selectAppSortMode($0) }
+                )) {
+                    ForEach(model.state.preferences.appSortOrder) { mode in Text(mode.title).tag(mode) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .help("CPU shows recent processor use; Memory shows each process's memory footprint.")
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { customizingSort.toggle() }
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(customizingSort ? Palette.accent(model.state.preferences) : Color.secondary)
+                .accessibilityLabel("Reorder sort buttons")
+                .help("Reorder Name, CPU, and Memory")
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 10)
+            .padding(.bottom, customizingSort ? 7 : 10)
+
+            if customizingSort {
+                SortOrderCustomizer(model: model, isPresented: $customizingSort)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             ScrollView {
                 LazyVStack(spacing: 3) {
                     ForEach(visibleApps) { app in
-                        HStack(spacing: 11) {
-                            Toggle(isOn: Binding(
+                        HStack(alignment: .center, spacing: 9) {
+                            Toggle("", isOn: Binding(
                                 get: { model.selectedPIDs.contains(app.id) },
                                 set: { _ in model.toggle(app) }
-                            )) {
-                                HStack(spacing: 10) {
-                                    Image(nsImage: app.icon)
-                                        .resizable().interpolation(.high)
-                                        .frame(width: model.state.preferences.openAppsIconSize.openApp,
-                                               height: model.state.preferences.openAppsIconSize.openApp)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(app.name)
-                                            .lineLimit(1)
-                                            .font(.system(size: 13, weight: .medium))
-                                        if sortMode != .name {
-                                            Text(usageLabel(for: app))
-                                                .font(.caption2.monospacedDigit())
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                    Spacer(minLength: 8)
-                                    if app.protected {
-                                        Text("Protected").foregroundStyle(.secondary)
-                                    } else if let result = model.resultByPID[app.id] {
-                                        Text(result).foregroundStyle(result == "Still running" ? .orange : .secondary)
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(.checkbox)
+                            .frame(width: 16)
+                            .accessibilityLabel(app.name)
+                            .disabled(app.protected || model.busy)
+
+                            HStack(alignment: .center, spacing: 10) {
+                                Image(nsImage: app.icon)
+                                    .resizable().interpolation(.high)
+                                    .scaledToFit()
+                                    .frame(width: model.state.preferences.openAppsIconSize.artwork,
+                                           height: model.state.preferences.openAppsIconSize.artwork)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(app.name)
+                                        .lineLimit(1)
+                                        .font(.system(size: 13, weight: .medium))
+                                    if sortMode != .name {
+                                        Text(usageLabel(for: app))
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
+                                Spacer(minLength: 8)
+                                if app.protected {
+                                    Text("Protected").foregroundStyle(.secondary)
+                                } else if let result = model.resultByPID[app.id] {
+                                    Text(result).foregroundStyle(result == "Still running" ? .orange : .secondary)
+                                }
                             }
-                            .toggleStyle(.checkbox)
-                            .disabled(app.protected || model.busy)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                guard !app.protected && !model.busy else { return }
+                                model.toggle(app)
+                            }
                             if model.resultByPID[app.id] == "Still running" {
                                 Button { model.reveal(app) } label: { Image(systemName: "arrow.up.forward.app") }
                                     .buttonStyle(.borderless)
@@ -411,7 +848,6 @@ private struct OpenAppsView: View {
                 }
                 .padding(.horizontal, 16)
             }
-            .onHover { model.setResourceUpdatesPaused($0) }
             .overlay {
                 if model.apps.isEmpty {
                     ContentUnavailableView("No user apps found", systemImage: "app.dashed",
@@ -425,25 +861,26 @@ private struct OpenAppsView: View {
                 if model.busy { ProgressView(model.phase).font(.caption).frame(maxWidth: .infinity, alignment: .leading) }
                 if !model.lastResults.isEmpty {
                     DisclosureGroup("Last result", isExpanded: $showResults) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            ForEach(Array(model.lastResults.enumerated()), id: \.offset) { _, entry in
-                                HStack {
-                                    Text(entry.name).lineLimit(1)
-                                    Spacer()
-                                    Text(entry.status).foregroundStyle(entry.status == "Still running" ? .orange : .secondary)
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 5) {
+                                ForEach(Array(model.lastResults.enumerated()), id: \.offset) { _, entry in
+                                    HStack {
+                                        Text(entry.name).lineLimit(1)
+                                        Spacer()
+                                        Text(entry.status).foregroundStyle(entry.status == "Still running" ? .orange : .secondary)
+                                    }
                                 }
                             }
                         }
+                        .frame(maxHeight: 150)
                         .font(.caption)
                         .padding(.top, 6)
                     }
                     .font(.caption)
                 }
                 Button { model.quitSelected() } label: {
-                    Label(model.busy ? "Quitting Apps…" : "Quit Selected Apps", systemImage: "xmark.app.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
+                    PrimaryActionLabel(title: model.busy ? "Quitting Apps…" : "Quit Selected Apps",
+                                       symbol: "xmark.app.fill")
                 }
                 .buttonStyle(SoftActionStyle(color: Palette.accent(model.state.preferences),
                                              textColor: Palette.textOnAccent(model.state.preferences)))
@@ -463,6 +900,7 @@ private struct ProfilesView: View {
     @State private var deleteID: UUID?
     @State private var editingProfile = false
     @State private var showingProfileSymbols = false
+    @State private var showingCompactProfiles = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -498,8 +936,9 @@ private struct ProfilesView: View {
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: profile.validSymbol)
-                                        .font(.system(size: model.state.preferences.profilesIconSize.profileStrip))
-                                        .frame(width: model.state.preferences.profilesIconSize.profileStrip + 2)
+                                        .font(.system(size: model.state.preferences.profilesIconSize.artwork))
+                                        .frame(width: model.state.preferences.profilesIconSize.artwork,
+                                               height: model.state.preferences.profilesIconSize.artwork)
                                         .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
                                     Text(profile.name).lineLimit(1)
                                 }
@@ -520,13 +959,61 @@ private struct ProfilesView: View {
                 .scrollIndicators(.hidden)
                 .padding(.bottom, 7)
             } else if model.state.profiles.count > 1 {
-                Picker("Profile", selection: Binding(
-                    get: { model.selectedProfileID },
-                    set: { model.selectedProfileID = $0; editingProfile = false; showingProfileSymbols = false }
-                )) {
-                    ForEach(model.state.profiles) { profile in
-                        Label(profile.name, systemImage: profile.validSymbol).tag(Optional(profile.id))
+                Button { showingCompactProfiles.toggle() } label: {
+                    HStack(spacing: 8) {
+                        if let selected = model.selectedProfile {
+                            Image(systemName: selected.validSymbol)
+                                .font(.system(size: model.state.preferences.profilesIconSize.artwork))
+                                .frame(width: model.state.preferences.profilesIconSize.artwork,
+                                       height: model.state.preferences.profilesIconSize.artwork)
+                                .foregroundStyle(Palette.foregroundColor(selected.accent, preferences: model.state.preferences))
+                            Text(selected.name).lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.caption)
                     }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 7)
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Choose profile")
+                .popover(isPresented: $showingCompactProfiles, arrowEdge: .bottom) {
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(model.state.profiles) { profile in
+                                Button {
+                                    model.selectedProfileID = profile.id
+                                    editingProfile = false
+                                    showingProfileSymbols = false
+                                    showingCompactProfiles = false
+                                } label: {
+                                    HStack(spacing: 9) {
+                                        Image(systemName: profile.validSymbol)
+                                            .font(.system(size: model.state.preferences.profilesIconSize.artwork))
+                                            .frame(width: model.state.preferences.profilesIconSize.artwork,
+                                                   height: model.state.preferences.profilesIconSize.artwork)
+                                            .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
+                                        Text(profile.name).lineLimit(1)
+                                        Spacer(minLength: 4)
+                                        if model.selectedProfileID == profile.id {
+                                            Image(systemName: "checkmark").font(.caption.weight(.semibold))
+                                        }
+                                    }
+                                    .padding(8)
+                                    .background(model.selectedProfileID == profile.id ?
+                                                Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13) :
+                                                Color.clear,
+                                                in: RoundedRectangle(cornerRadius: 8))
+                                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .frame(width: 270, height: min(280, CGFloat(model.state.profiles.count) *
+                          (model.state.preferences.profilesIconSize.artwork + 22) + 16))
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 7)
@@ -542,20 +1029,15 @@ private struct ProfilesView: View {
 
                         VStack(alignment: .leading, spacing: 8) {
                             profileToggle("Include newly detected apps", value: profile.includeNewApps, id: profile.id) { $0.includeNewApps = $1 }
-                            Text("Closes running apps not listed above as Keep Open. Protected apps are never closed.")
+                            Text(profile.includeNewApps
+                                 ? "Other running apps close unless saved in Keep Open. Protected apps stay open."
+                                 : "Only apps saved in Close will close. Protected apps stay open.")
                                 .font(.caption2).foregroundStyle(.secondary)
                             profileToggle("Quit QuitBatch after running", value: profile.quitAfterRunning, id: profile.id) { $0.quitAfterRunning = $1 }
                             profileToggle("Offer workspace restoration after reopening", value: profile.restoreAfterReopening, id: profile.id) { $0.restoreAfterReopening = $1 }
                         }
                         .font(.caption)
 
-                        Button { model.activateProfile(profile.id) } label: {
-                            Label("Run \(profile.name.isEmpty ? "Profile" : profile.name)", systemImage: "play.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(SoftActionStyle(color: Palette.color(profile.accent, preferences: model.state.preferences),
-                                                     textColor: Palette.textOnColor(profile.accent, preferences: model.state.preferences)))
-                        .disabled(model.busy)
                         if !model.state.restorableApps.isEmpty {
                             Button("Restore Previous Workspace") { model.restoreWorkspace() }
                                 .disabled(model.busy)
@@ -564,6 +1046,17 @@ private struct ProfilesView: View {
                     .padding(16)
                 }
                 .tint(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
+
+                Button { model.activateProfile(profile.id) } label: {
+                    PrimaryActionLabel(title: "Run \(profile.name.isEmpty ? "Profile" : profile.name)",
+                                       symbol: "play.fill")
+                }
+                .buttonStyle(SoftActionStyle(color: Palette.color(profile.accent, preferences: model.state.preferences),
+                                             textColor: Palette.textOnColor(profile.accent, preferences: model.state.preferences)))
+                .disabled(model.busy)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
             } else {
                 ContentUnavailableView("No profile selected", systemImage: "square.on.square",
                                        description: Text("Create a profile to save an app list."))
@@ -594,11 +1087,11 @@ private struct ProfilesView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: profile.validSymbol)
-                    .font(.system(size: model.state.preferences.profilesIconSize.profileSymbol * 0.55,
+                    .font(.system(size: model.state.preferences.profilesIconSize.artwork,
                                   weight: .medium))
                     .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
-                    .frame(width: model.state.preferences.profilesIconSize.profileSymbol,
-                           height: model.state.preferences.profilesIconSize.profileSymbol)
+                    .frame(width: model.state.preferences.profilesIconSize.badge,
+                           height: model.state.preferences.profilesIconSize.badge)
                     .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13),
                                 in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityHidden(true)
@@ -688,12 +1181,15 @@ private struct ProfilesView: View {
                 Text("Icon").font(.subheadline)
                 Button { showingProfileSymbols.toggle() } label: {
                     Image(systemName: profile.validSymbol)
-                        .font(.system(size: 17, weight: .medium))
+                        .font(.system(size: model.state.preferences.profilesIconSize.artwork, weight: .medium))
                         .foregroundStyle(Palette.foregroundColor(profile.accent, preferences: model.state.preferences))
-                        .frame(width: 32, height: 26)
+                        .frame(width: model.state.preferences.profilesIconSize.badge,
+                               height: model.state.preferences.profilesIconSize.badge)
+                        .background(Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13),
+                                    in: RoundedRectangle(cornerRadius: 9))
+                        .contentShape(RoundedRectangle(cornerRadius: 9))
                 }
-                .controlSize(.small)
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .help("Choose profile icon")
                 .accessibilityLabel("Choose profile icon")
                 .popover(isPresented: $showingProfileSymbols, arrowEdge: .top) {
@@ -715,18 +1211,12 @@ private struct ProfilesView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Palette.color(profile.accent, preferences: model.state.preferences))
-                            .frame(width: 10, height: 10)
-                        Text(profile.accent == nil || profile.accent == "blue" ? "App color" : (profile.accent?.capitalized ?? "App color"))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                    }
+                    Text(profile.accent == nil || profile.accent == "blue" ? "App color" : (profile.accent?.capitalized ?? "App color"))
+                        .lineLimit(1)
                 }
                 .controlSize(.small)
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel("Profile accent")
             }
@@ -744,8 +1234,9 @@ private struct ProfilesView: View {
                             showingProfileSymbols = false
                         } label: {
                             Image(systemName: choice.id)
-                                .font(.system(size: 25))
-                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .font(.system(size: model.state.preferences.profilesIconSize.artwork))
+                                .frame(maxWidth: .infinity,
+                                       minHeight: max(44, model.state.preferences.profilesIconSize.artwork + 16))
                             .foregroundStyle(profile.symbol == choice.id ? Palette.foregroundColor(profile.accent, preferences: model.state.preferences) : Color.primary)
                             .background(profile.symbol == choice.id ? Palette.color(profile.accent, preferences: model.state.preferences).opacity(0.13) : Color.primary.opacity(0.045),
                                         in: RoundedRectangle(cornerRadius: 8))
@@ -753,7 +1244,8 @@ private struct ProfilesView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Choose \(choice.title) symbol")
-                        .accessibilityAddTraits(profile.symbol == choice.id ? .isSelected : [])
+                        .accessibilityRemoveTraits(.isSelected)
+                        .accessibilityValue(profile.symbol == choice.id ? "Selected" : "Not selected")
                         .help(choice.title)
                     }
                 }
@@ -766,12 +1258,20 @@ private struct ProfilesView: View {
 
     private func profileToggle(_ title: String, value: Bool, id: UUID,
                                change: @escaping (inout AppProfile, Bool) -> Void) -> some View {
-        Toggle(title, isOn: Binding(
-            get: { value },
-            set: { newValue in model.updateProfile(id) { change(&$0, newValue) } }
-        ))
-        .toggleStyle(.switch)
-        .controlSize(.small)
+        HStack(spacing: 10) {
+            Text(title)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Toggle(title, isOn: Binding(
+                get: { value },
+                set: { newValue in model.updateProfile(id) { change(&$0, newValue) } }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .accessibilityLabel(title)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func profileAppSection(_ title: String, entries: [AppReference], profile: AppProfile,
@@ -780,11 +1280,11 @@ private struct ProfilesView: View {
         let runningCounts = Dictionary(grouping: model.eligibleApps, by: { $0.reference.id }).mapValues(\.count)
         let savedIDs = Set((profile.close + profile.keep).map(\.id))
         var seenImplicitIDs = Set<String>()
-        let implicitApps = model.eligibleApps.filter {
+        let implicitApps = decision == .close ? model.eligibleApps.filter {
             !savedIDs.contains($0.reference.id) &&
             AppPolicy.decision(for: $0.reference, protected: false, profile: profile) == decision &&
             seenImplicitIDs.insert($0.reference.id).inserted
-        }
+        } : []
         let runningTotal = entries.reduce(0) { $0 + (runningCounts[$1.id] ?? 0) }
             + implicitApps.reduce(0) { $0 + (runningCounts[$1.reference.id] ?? 0) }
         return LazyVStack(alignment: .leading, spacing: 7) {
@@ -838,8 +1338,9 @@ private struct ProfilesView: View {
                         HStack(spacing: 8) {
                             Image(nsImage: ProfileIconCache.image(for: entry))
                                 .resizable().interpolation(.high)
-                                .frame(width: model.state.preferences.profilesIconSize.profileApp,
-                                       height: model.state.preferences.profilesIconSize.profileApp)
+                                .scaledToFit()
+                                .frame(width: model.state.preferences.profilesIconSize.artwork,
+                                       height: model.state.preferences.profilesIconSize.artwork)
                             Text(entry.name).font(.caption).lineLimit(1)
                             Spacer()
                             if let count = runningCounts[entry.id], count > 1 {
@@ -859,8 +1360,9 @@ private struct ProfilesView: View {
                         HStack(spacing: 8) {
                             Image(nsImage: app.icon)
                                 .resizable().interpolation(.high)
-                                .frame(width: model.state.preferences.profilesIconSize.profileApp,
-                                       height: model.state.preferences.profilesIconSize.profileApp)
+                                .scaledToFit()
+                                .frame(width: model.state.preferences.profilesIconSize.artwork,
+                                       height: model.state.preferences.profilesIconSize.artwork)
                             Text(app.name).font(.caption).lineLimit(1)
                             Text(decision == .close ? "Auto" : "Not saved")
                                 .font(.caption2).foregroundStyle(.secondary)
@@ -874,6 +1376,11 @@ private struct ProfilesView: View {
                             .help(decision == .close ? "Keep \(app.name) open" : "Add \(app.name) to Close")
                         }
                     }
+                }
+                if decision == .keep && !profile.includeNewApps {
+                    Text("Other apps stay open unless added to Close.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -902,6 +1409,7 @@ private enum ProfileIconCache {
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    let contentSize: CGSize
     @State private var recording = false
     @State private var showingSymbols = false
 
@@ -914,7 +1422,7 @@ struct SettingsView: View {
                         .resizable()
                         .scaledToFit()
                         .foregroundStyle(Palette.accentForeground(model.state.preferences))
-                        .frame(width: 23, height: 23)
+                        .frame(width: ChromeIconMetrics.brand, height: ChromeIconMetrics.brand)
                         .frame(width: 36, height: 36)
                         .background(Palette.accent(model.state.preferences).opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
                         .contentShape(RoundedRectangle(cornerRadius: 9))
@@ -973,7 +1481,7 @@ struct SettingsView: View {
                     }
 
                     card("Layout", symbol: "rectangle.on.rectangle") {
-                        iconSizePicker("Open Apps icons", selection: Binding(
+                        iconSizePicker("Apps icons", selection: Binding(
                             get: { model.state.preferences.openAppsIconSize },
                             set: { value in model.updatePreferences { $0.openAppsIconSize = value } }
                         ))
@@ -1144,7 +1652,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .frame(minWidth: 360, minHeight: 430)
+        .frame(width: contentSize.width, height: contentSize.height)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(colorScheme)
         .tint(Palette.accentForeground(model.state.preferences))
@@ -1162,14 +1670,30 @@ struct SettingsView: View {
     private func iconSizePicker(_ title: String, selection: Binding<IconSizeOption>) -> some View {
         HStack(spacing: 10) {
             Text(title).font(.subheadline).frame(width: 96, alignment: .leading)
-            Picker(title, selection: selection) {
+            HStack(spacing: 2) {
                 ForEach(IconSizeOption.allCases) { option in
-                    Text(option.title).tag(option)
+                    let selected = selection.wrappedValue == option
+                    Button {
+                        selection.wrappedValue = option
+                    } label: {
+                        Text(option.title)
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 26)
+                            .background(selected ? Color.primary.opacity(0.13) : .clear,
+                                        in: RoundedRectangle(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(title), \(option.title)")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .padding(3)
+            .frame(maxWidth: .infinity)
+            .frame(height: 32)
+            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
         }
+        .frame(height: 32)
     }
 
     private var darknessRamp: [Color] {
@@ -1193,7 +1717,7 @@ struct SettingsView: View {
                             .renderingMode(.template)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 30, height: 30)
+                            .frame(width: ChromeIconMetrics.brand, height: ChromeIconMetrics.brand)
                             .frame(maxWidth: .infinity, minHeight: 50)
                         .foregroundStyle(model.state.preferences.menuBarSymbol == choice.id ? Palette.accentForeground(model.state.preferences) : Color.primary)
                         .background(model.state.preferences.menuBarSymbol == choice.id ? Palette.accent(model.state.preferences).opacity(0.14) : Color.primary.opacity(0.05),
@@ -1215,7 +1739,8 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 8) {
                 Image(systemName: symbol)
-                    .frame(width: 16)
+                    .font(.system(size: ChromeIconMetrics.section, weight: .medium))
+                    .frame(width: ChromeIconMetrics.section, height: ChromeIconMetrics.section)
                     .foregroundStyle(Palette.accentForeground(model.state.preferences))
                 Text(title).foregroundStyle(.primary)
             }
@@ -1253,8 +1778,8 @@ private struct ColorRampSlider: View {
                     .frame(width: thumbSize, height: thumbSize)
                     .overlay(Circle().stroke(.white, lineWidth: 2))
                     .shadow(
-                        color: isFocused ? color.opacity(0.7) : .black.opacity(0.25),
-                        radius: isFocused ? 5 : 2,
+                        color: .black.opacity(isFocused ? 0.24 : 0.16),
+                        radius: isFocused ? 3 : 2,
                         y: 1
                     )
                     .offset(x: travel * value)
@@ -1330,6 +1855,25 @@ private struct NativeGlassMaterial: NSViewRepresentable {
     }
     func updateNSView(_ view: NSVisualEffectView, context: Context) {
         view.state = .active
+    }
+}
+
+private struct PrimaryActionLabel: View {
+    let title: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, minHeight: 22)
     }
 }
 

@@ -25,8 +25,8 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key><string>com.vladikmartinez.appcloser</string>
   <key>CFBundleExecutable</key><string>QuitBatch</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>2.0</string>
+  <key>CFBundleVersion</key><string>2</string>
   <key>CFBundleIconFile</key><string>AppCloser</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>

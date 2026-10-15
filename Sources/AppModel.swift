@@ -29,25 +29,13 @@ final class AppModel: ObservableObject {
     @Published var lastResults: [(pid: pid_t, name: String, status: String)] = []
     @Published private(set) var pendingForceQuitCount = 0
     @Published var message: String?
-    @Published var section: Section = .openApps
-
-    enum Section: String, CaseIterable, Identifiable {
-        case openApps = "Open Apps"
-        case profiles = "Profiles"
-        var id: String { rawValue }
-        var symbol: String {
-            switch self {
-            case .openApps: "square.stack.3d.up"
-            case .profiles: "square.on.square"
-            }
-        }
-    }
+    @Published var section: PanelSection = .openApps
+    @Published var customizingSections = false
 
     private let store: StateStore
     private var observers: [NSObjectProtocol] = []
     private var timer: Timer?
     private var resourceTimer: Timer?
-    private var resourceUpdatesPaused = false
     private var resourceSnapshots: [pid_t: ProcessResourceSnapshot] = [:]
     private var pendingForceQuitTargets: [RunningApp] = []
     private var pendingForceQuitProfile: AppProfile?
@@ -63,6 +51,7 @@ final class AppModel: ObservableObject {
             state = .initial()
             message = "Could not read saved profiles: \(error.localizedDescription)"
         }
+        section = visibleSections.first ?? .openApps
         selectedProfileID = state.profiles.first?.id
         refresh()
         let center = NSWorkspace.shared.notificationCenter
@@ -87,6 +76,36 @@ final class AppModel: ObservableObject {
     var eligibleApps: [RunningApp] { apps.filter { !$0.protected } }
     var selectedCount: Int { eligibleApps.filter { selectedPIDs.contains($0.id) }.count }
     var selectedProfile: AppProfile? { state.profiles.first { $0.id == selectedProfileID } }
+    var visibleSections: [PanelSection] {
+        state.preferences.sectionOrder.filter { !state.preferences.hiddenSections.contains($0) }
+    }
+
+    func setSectionVisible(_ item: PanelSection, visible: Bool) {
+        guard visible || visibleSections.count > 1 else { return }
+        updatePreferences {
+            if visible { $0.hiddenSections.remove(item) }
+            else { $0.hiddenSections.insert(item) }
+        }
+        if !visible && section == item { section = visibleSections.first ?? .openApps }
+    }
+
+    func moveSection(_ item: PanelSection, to destination: Int) {
+        updatePreferences { preferences in
+            preferences.sectionOrder.removeAll { $0 == item }
+            preferences.sectionOrder.insert(item, at: min(max(destination, 0), preferences.sectionOrder.count))
+        }
+    }
+
+    func selectAppSortMode(_ mode: AppSortMode) {
+        updatePreferences { $0.appSortMode = mode }
+    }
+
+    func moveAppSortMode(_ mode: AppSortMode, to destination: Int) {
+        updatePreferences { preferences in
+            preferences.appSortOrder.removeAll { $0 == mode }
+            preferences.appSortOrder.insert(mode, at: min(max(destination, 0), preferences.appSortOrder.count))
+        }
+    }
 
     func refresh() {
         let running = NSWorkspace.shared.runningApplications
@@ -124,21 +143,14 @@ final class AppModel: ObservableObject {
             refreshResources()
             resourceTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
                 Task { @MainActor in
-                    guard let self, !self.resourceUpdatesPaused else { return }
-                    self.refreshResources()
+                    self?.refreshResources()
                 }
             }
         } else {
             resourceTimer?.invalidate()
             resourceTimer = nil
-            resourceUpdatesPaused = false
             resourceSnapshots.removeAll()
         }
-    }
-
-    func setResourceUpdatesPaused(_ paused: Bool) {
-        resourceUpdatesPaused = paused
-        if !paused && resourceTimer != nil { refreshResources() }
     }
 
     private func refreshResources() {
@@ -440,17 +452,18 @@ final class AppModel: ObservableObject {
     }
 
     func updatePreferences(_ change: (inout Preferences) -> Void) {
-        let oldShortcut = state.preferences.shortcut
-        let oldMenuBarSymbol = state.preferences.menuBarSymbol
-        let oldKeepPanelWithSettings = state.preferences.keepPanelOpenWithSettings
-        change(&state.preferences)
+        let previous = state.preferences
+        var updated = previous
+        change(&updated)
+        guard updated != previous else { return }
+        state.preferences = updated
         save()
-        applyAppearance()
-        if oldShortcut != state.preferences.shortcut { onShortcutChanged?(state.preferences.shortcut) }
-        if oldMenuBarSymbol != state.preferences.menuBarSymbol {
+        if previous.appearance != state.preferences.appearance { applyAppearance() }
+        if previous.shortcut != state.preferences.shortcut { onShortcutChanged?(state.preferences.shortcut) }
+        if previous.menuBarSymbol != state.preferences.menuBarSymbol {
             onMenuBarSymbolChanged?(state.preferences.menuBarSymbol)
         }
-        if oldKeepPanelWithSettings != state.preferences.keepPanelOpenWithSettings {
+        if previous.keepPanelOpenWithSettings != state.preferences.keepPanelOpenWithSettings {
             onKeepPanelWithSettingsChanged?(state.preferences.keepPanelOpenWithSettings)
         }
     }
